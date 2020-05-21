@@ -1,9 +1,16 @@
 #pragma once
 
+//optional for POD types
 template <class T>
 class Optional
 {
 public:
+
+	Optional(){}
+	Optional(T value) {
+		setValue(value);
+	}
+
 	void setValue(T givenValue)
 	{
 		value = givenValue;

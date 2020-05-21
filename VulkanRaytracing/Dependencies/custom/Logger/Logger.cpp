@@ -7,7 +7,6 @@ void Logger::LogMessage(const char *message)
 	std::cout << "[message] " << message << '\n';
 }
 
-///TODO
 void Logger::LogMessageFormatted(const char * const format, ...)
 {
 	std::cout << "[message] ";

@@ -168,10 +168,12 @@
   <ItemGroup>
     <ClCompile Include="Dependencies\custom\Logger\Logger.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="Raytracer.cpp" />
     <ClCompile Include="vkutils.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Dependencies\custom\Logger\Logger.h" />
+    <ClInclude Include="Raytracer.h" />
     <ClInclude Include="Span.h" />
     <ClInclude Include="vkutils.h" />
   </ItemGroup>
