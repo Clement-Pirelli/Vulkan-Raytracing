@@ -44,60 +44,69 @@ namespace vkut {
 		VkDeviceMemory memory;
 	};
 
-	//common
-	Image createImage(VkImageCreateInfo imageCreateInfo, VkMemoryPropertyFlags properties);
-	void destroyImage(Image image);
 
-	VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels);
-	void destroyImageView(VkImageView view);
-
-	VkRenderPass createRenderPass(const std::vector<VkAttachmentDescription> &colorDescriptions, Optional<VkAttachmentDescription> depthDescription = Optional<VkAttachmentDescription>());
-	void destroyRenderPass(VkRenderPass renderPass);
-
-	VkFormat findDepthFormat();
-	void transitionImageLayout(VkCommandPool commandPool, VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels);
+	namespace common {
+		Image createImage(VkImageCreateInfo imageCreateInfo, VkMemoryPropertyFlags properties);
+		void destroyImage(Image image); 
+		void transitionImageLayout(VkCommandPool commandPool, VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels);
 
 
-	//setup
+		VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels);
+		void destroyImageView(VkImageView view);
 
-	[[nodiscard]]
-	GLFWwindow *createWindow(const char *title, int width, int height);
-	void destroyWindow(GLFWwindow *window);
+		VkRenderPass createRenderPass(const std::vector<VkAttachmentDescription> &colorDescriptions, Optional<VkAttachmentDescription> depthDescription = Optional<VkAttachmentDescription>());
+		void destroyRenderPass(VkRenderPass renderPass);
 
-	void createInstance(const char *title);
-	void destroyInstance();
-
-	void createDebugMessenger();
-	void destroyDebugMessenger();
-
-	void createSurface(GLFWwindow *window);
-	void destroySurface();
+		VkFormat findDepthFormat();
+		
+		[[nodiscard]]
+		std::vector<VkCommandBuffer> createCommandBuffers(VkCommandPool commandPool, size_t amount, VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+		void destroyCommandBuffers(VkCommandPool commandPool, const std::vector<VkCommandBuffer> &commandBuffers);
 	
-	void choosePhysicalDevice(std::vector<const char *> requiredDeviceExtensions);
-
-	void createLogicalDevice();
-	void destroyLogicalDevice();
-
-	void createSwapChain(uint32_t width, uint32_t height);
-	void destroySwapChain();
-
-	void createSwapchainImageViews();
-	void destroySwapchainImageViews();
-
-	[[nodiscard]]
-	VkCommandPool createGraphicsCommandPool();
-	void destroyCommandPool(VkCommandPool commandPool);
-
-	[[nodiscard]]
-	VkFramebuffer createRenderPassFramebuffer(VkRenderPass renderPass, uint32_t width, uint32_t height, const std::vector<VkImageView> &colorViews, Optional<VkImageView> depthAttachment);
-	void destroyFramebuffer(VkFramebuffer framebuffer);
+		[[nodiscard]]
+		VkDescriptorSetLayout createDescriptorSetLayout(std::vector<VkDescriptorSetLayoutBinding> bindings);
+		void destroyDescriptorSetLayout(VkDescriptorSetLayout descriptorSetLayout);
+	}
 	
-	void createSyncObjects(size_t maxFramesInFlight);
-	void destroySyncObjects();
+	namespace setup {
+	
+		[[nodiscard]]
+		GLFWwindow *createWindow(const char *title, int width, int height);
+		void destroyWindow(GLFWwindow *window);
 
-	[[nodiscard]]
-	std::vector<VkCommandBuffer> createCommandBuffers(VkCommandPool commandPool, size_t amount, VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
-	void destroyCommandBuffers(VkCommandPool commandPool, const std::vector<VkCommandBuffer> &commandBuffers);
+		void createInstance(const char *title);
+		void destroyInstance();
+
+		void createDebugMessenger();
+		void destroyDebugMessenger();
+
+		void createSurface(GLFWwindow *window);
+		void destroySurface();
+
+		void choosePhysicalDevice(std::vector<const char *> requiredDeviceExtensions);
+
+		void createLogicalDevice();
+		void destroyLogicalDevice();
+
+		void createSwapChain(uint32_t width, uint32_t height);
+		void destroySwapChain();
+
+		void createSwapchainImageViews();
+		void destroySwapchainImageViews();
+
+		[[nodiscard]]
+		VkCommandPool createGraphicsCommandPool();
+		void destroyCommandPool(VkCommandPool commandPool);
+
+		[[nodiscard]]
+		VkFramebuffer createRenderPassFramebuffer(VkRenderPass renderPass, uint32_t width, uint32_t height, const std::vector<VkImageView> &colorViews, Optional<VkImageView> depthAttachment);
+		void destroyFramebuffer(VkFramebuffer framebuffer);
+
+		void createSyncObjects(size_t maxFramesInFlight);
+		void destroySyncObjects();
+	}
+
+	
 }
 
 #endif

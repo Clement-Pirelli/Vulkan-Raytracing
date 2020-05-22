@@ -22,7 +22,7 @@ namespace {
 	{
 		return VkAttachmentDescription 
 		{
-				.format = vkut::findDepthFormat(),
+				.format = vkut::common::findDepthFormat(),
 				.samples = VK_SAMPLE_COUNT_1_BIT,
 				.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 				.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
@@ -38,24 +38,24 @@ void Raytracer::cleanupSwapchainDependents()
 {
 	for (size_t i = 0; i < framebuffers.size(); i++)
 	{
-		vkut::destroyFramebuffer(framebuffers[i]);
+		vkut::setup::destroyFramebuffer(framebuffers[i]);
 	}
 
-	vkut::destroyImageView(depthView);
-	vkut::destroyImage(depthImage);
-	vkut::destroyRenderPass(renderPass);
-	vkut::destroySwapchainImageViews();
-	vkut::destroySwapChain();
+	vkut::common::destroyImageView(depthView);
+	vkut::common::destroyImage(depthImage);
+	vkut::common::destroyRenderPass(renderPass);
+	vkut::setup::destroySwapchainImageViews();
+	vkut::setup::destroySwapChain();
 }
 
 void Raytracer::recreateSwapchainDependents()
 {
-	vkut::createSwapChain(width, height);
-	vkut::createSwapchainImageViews();
+	vkut::setup::createSwapChain(width, height);
+	vkut::setup::createSwapchainImageViews();
 
 	std::vector<VkAttachmentDescription> colorDescriptions = getColorAttachmentDescriptions();
 	VkAttachmentDescription depthDescription = getDepthAttachmentDescription();
-	renderPass = vkut::createRenderPass(colorDescriptions, Optional<VkAttachmentDescription>(depthDescription));
+	renderPass = vkut::common::createRenderPass(colorDescriptions, Optional<VkAttachmentDescription>(depthDescription));
 
 	createDepthResources();
 	createFramebuffers();
@@ -67,7 +67,7 @@ void Raytracer::createDepthResources()
 	{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
 		.imageType = VK_IMAGE_TYPE_2D,
-		.format = vkut::findDepthFormat(),
+		.format = vkut::common::findDepthFormat(),
 		.extent = {
 			.width = static_cast<uint32_t>(width),
 			.height = static_cast<uint32_t>(height),
@@ -83,10 +83,10 @@ void Raytracer::createDepthResources()
 	};
 
 	constexpr VkMemoryPropertyFlags flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-	depthImage = vkut::createImage(depthImageCreateInfo, flags);
-	depthView = vkut::createImageView(depthImage.image, depthImageCreateInfo.format, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
+	depthImage = vkut::common::createImage(depthImageCreateInfo, flags);
+	depthView = vkut::common::createImageView(depthImage.image, depthImageCreateInfo.format, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
 
-	vkut::transitionImageLayout(
+	vkut::common::transitionImageLayout(
 		commandPool,
 		depthImage.image,
 		depthImageCreateInfo.format,
@@ -101,7 +101,7 @@ void Raytracer::createFramebuffers()
 	for (size_t i = 0; i < vkut::swapChainImages.size(); i++)
 	{
 		std::vector<VkImageView> colorViews = { vkut::swapChainImageViews[i] };
-		VkFramebuffer frameBuffer = vkut::createRenderPassFramebuffer(
+		VkFramebuffer frameBuffer = vkut::setup::createRenderPassFramebuffer(
 			renderPass,
 			vkut::swapChainExtent.width,
 			vkut::swapChainExtent.height,
@@ -115,25 +115,25 @@ void Raytracer::createFramebuffers()
 
 void Raytracer::run()
 {
-	window = vkut::createWindow(title, width, height);
-	vkut::createInstance(title);
-	vkut::createDebugMessenger();
-	vkut::createSurface(window);
-	vkut::choosePhysicalDevice(requiredExtensions);
-	vkut::createLogicalDevice();
-	vkut::createSwapChain(width, height);
-	vkut::createSwapchainImageViews();
+	window = vkut::setup::createWindow(title, width, height);
+	vkut::setup::createInstance(title);
+	vkut::setup::createDebugMessenger();
+	vkut::setup::createSurface(window);
+	vkut::setup::choosePhysicalDevice(requiredExtensions);
+	vkut::setup::createLogicalDevice();
+	vkut::setup::createSwapChain(width, height);
+	vkut::setup::createSwapchainImageViews();
 
 	std::vector<VkAttachmentDescription> colorDescriptions = getColorAttachmentDescriptions();
 	VkAttachmentDescription depthDescription = getDepthAttachmentDescription();
-	renderPass = vkut::createRenderPass(colorDescriptions, Optional<VkAttachmentDescription>(depthDescription));
+	renderPass = vkut::common::createRenderPass(colorDescriptions, Optional<VkAttachmentDescription>(depthDescription));
 	
-	commandPool = vkut::createGraphicsCommandPool();
+	commandPool = vkut::setup::createGraphicsCommandPool();
 	
 	createDepthResources();
 	createFramebuffers();
-	vkut::createSyncObjects(maxFramesInFlight);
-	commandBuffers = vkut::createCommandBuffers(commandPool, framebuffers.size());
+	vkut::setup::createSyncObjects(maxFramesInFlight);
+	commandBuffers = vkut::common::createCommandBuffers(commandPool, framebuffers.size());
 
 	do
 	{
@@ -141,22 +141,22 @@ void Raytracer::run()
 	} while (!glfwWindowShouldClose(window));
 
 
-	vkut::destroyCommandBuffers(commandPool, commandBuffers);
-	vkut::destroySyncObjects();
+	vkut::common::destroyCommandBuffers(commandPool, commandBuffers);
+	vkut::setup::destroySyncObjects();
 	for (size_t i = 0; i < framebuffers.size(); i++)
 	{
-		vkut::destroyFramebuffer(framebuffers[i]);
+		vkut::setup::destroyFramebuffer(framebuffers[i]);
 	}
 
-	vkut::destroyImageView(depthView);
-	vkut::destroyImage(depthImage);
-	vkut::destroyCommandPool(commandPool);
-	vkut::destroyRenderPass(renderPass);
-	vkut::destroySwapchainImageViews();
-	vkut::destroySwapChain();
-	vkut::destroyLogicalDevice();
-	vkut::destroySurface();
-	vkut::destroyDebugMessenger();
-	vkut::destroyInstance();
-	vkut::destroyWindow(window);
+	vkut::common::destroyImageView(depthView);
+	vkut::common::destroyImage(depthImage);
+	vkut::setup::destroyCommandPool(commandPool);
+	vkut::common::destroyRenderPass(renderPass);
+	vkut::setup::destroySwapchainImageViews();
+	vkut::setup::destroySwapChain();
+	vkut::setup::destroyLogicalDevice();
+	vkut::setup::destroySurface();
+	vkut::setup::destroyDebugMessenger();
+	vkut::setup::destroyInstance();
+	vkut::setup::destroyWindow(window);
 }
