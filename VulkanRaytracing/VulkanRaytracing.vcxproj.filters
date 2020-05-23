@@ -35,9 +35,6 @@
     <ClInclude Include="Dependencies\custom\Logger\Logger.h">
       <Filter>Resource Files</Filter>
     </ClInclude>
-    <ClInclude Include="Span.h">
-      <Filter>Resource Files</Filter>
-    </ClInclude>
     <ClInclude Include="Raytracer.h">
       <Filter>Header Files</Filter>
     </ClInclude>

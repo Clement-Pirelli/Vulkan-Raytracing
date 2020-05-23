@@ -174,7 +174,6 @@
   <ItemGroup>
     <ClInclude Include="Dependencies\custom\Logger\Logger.h" />
     <ClInclude Include="Raytracer.h" />
-    <ClInclude Include="Span.h" />
     <ClInclude Include="vkutils.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

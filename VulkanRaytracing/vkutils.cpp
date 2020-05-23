@@ -386,11 +386,147 @@ namespace vkut {
 
 	namespace common {
 
-		VkDescriptorSetLayout createDescriptorSetLayout(std::vector<VkDescriptorSetLayoutBinding> bindings)
+		Buffer createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags propertyFlags)
+		{
+			Buffer buffer 
+			{
+				.size = size
+			};
+
+			VkBufferCreateInfo bufferInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+				.size = size,
+				.usage = usage,
+				.sharingMode = VK_SHARING_MODE_EXCLUSIVE
+			};
+			VK_CHECK(vkCreateBuffer(vkut::device, &bufferInfo, nullptr, &buffer.buffer));
+			Logger::LogMessageFormatted("Created buffer %u!\n", buffer);
+
+			VkMemoryRequirements memRequirements;
+			vkGetBufferMemoryRequirements(vkut::device, buffer.buffer, &memRequirements);
+
+			VkMemoryAllocateInfo allocInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+				.allocationSize = memRequirements.size,
+				.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, propertyFlags)
+			};
+
+			VK_CHECK(vkAllocateMemory(vkut::device, &allocInfo, nullptr, &buffer.memory));
+			Logger::LogMessageFormatted("Allocated buffer memory %u!\n", buffer.memory);
+
+			VK_CHECK(vkBindBufferMemory(vkut::device, buffer.buffer, buffer.memory, 0));
+			
+			return buffer;
+		}
+
+		void destroyBuffer(const Buffer &buffer)
+		{
+			vkDestroyBuffer(vkut::device, buffer.buffer, nullptr);
+			vkFreeMemory(vkut::device, buffer.memory, nullptr);
+			Logger::LogMessageFormatted("Destroyed buffer %u!\n", buffer.buffer);
+			Logger::LogMessageFormatted("Freed buffer memory %u!\n", buffer.memory);
+		}
+
+		VkDescriptorPool createDescriptorPool(const std::vector<VkDescriptorType> &descriptorTypes)
+		{
+			std::vector<VkDescriptorPoolSize> poolSizes = std::vector<VkDescriptorPoolSize>(descriptorTypes.size());
+			for(size_t i = 0; i < poolSizes.size(); i++)
+			{
+				VkDescriptorPoolSize poolSize
+				{
+					.type = descriptorTypes[i],
+					.descriptorCount = static_cast<uint32_t>(swapChainImages.size())
+				};
+				poolSizes[i] = poolSize;
+			}
+
+			VkDescriptorPoolCreateInfo poolInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+				.maxSets = static_cast<uint32_t>(swapChainImages.size()),
+				.poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
+				.pPoolSizes = poolSizes.data(),
+			};
+
+			VkDescriptorPool descriptorPool = {};
+			VK_CHECK(vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool));
+			Logger::LogMessageFormatted("Created descriptor pool %u!\n", descriptorPool);
+			return descriptorPool;
+		}
+
+		void destroyDescriptorPool(VkDescriptorPool descriptorPool)
+		{
+			vkDestroyDescriptorPool(vkut::device, descriptorPool, nullptr);
+			Logger::LogMessageFormatted("Destroyed descriptor pool %u!\n", descriptorPool);
+		}
+		
+		std::vector<VkDescriptorSet> createDescriptorSets(VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool, const std::vector<DescriptorSetInfo> &descriptorSetInfos)
+		{
+			std::vector<VkDescriptorSetLayout> layouts = std::vector<VkDescriptorSetLayout>(swapChainImages.size());
+			for (size_t i = 0; i < layouts.size(); i++)
+			{
+				layouts.push_back(descriptorSetLayout);
+			}
+
+			VkDescriptorSetAllocateInfo allocInfo = {};
+			allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+			allocInfo.descriptorPool = descriptorPool;
+			allocInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
+			allocInfo.pSetLayouts = layouts.data();
+
+			std::vector<VkDescriptorSet> descriptorSets = std::vector<VkDescriptorSet>(layouts.size());
+			
+			VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()));
+			for (size_t i = 0; i < descriptorSets.size(); i++) 
+			{
+				Logger::LogMessageFormatted("Allocated descriptor set %u!", descriptorSets[i]);
+			}
+
+			for (size_t i = 0; i < descriptorSets.size(); i++)
+			{
+				std::vector<VkWriteDescriptorSet> descriptorWrites = std::vector<VkWriteDescriptorSet>();
+				for(size_t j = 0; j < descriptorWrites.size(); j++)
+				{
+					const DescriptorSetInfo &info = descriptorSetInfos[j];
+					
+					VkWriteDescriptorSet descriptorWrite
+					{
+						.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+						.pNext = info.pNext,
+						.dstSet = descriptorSets[i],
+						.dstBinding = info.dstBinding,
+						.dstArrayElement = info.dstArrayElement,
+						.descriptorCount = info.descriptorCount,
+						.descriptorType = info.descriptorType,
+						.pImageInfo = info.pImageInfo,
+						.pBufferInfo = info.pBufferInfo,
+						.pTexelBufferView = info.pTexelBufferView,
+					};
+				}
+
+				vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+				Logger::LogMessageFormatted("Updated descriptor set %u!\n", descriptorSets[i]);
+			}
+			return descriptorSets;
+		}
+
+		void destroyDescriptorSets(const std::vector<VkDescriptorSet> &descriptorSets, VkDescriptorPool descriptorPool)
+		{
+			vkFreeDescriptorSets(vkut::device, descriptorPool, static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data());
+			for (size_t i = 0; i < descriptorSets.size(); i++)
+			{
+				Logger::LogMessageFormatted("Freed descriptor set %u!", descriptorSets[i]);
+			}
+
+		}
+
+		VkDescriptorSetLayout createDescriptorSetLayout(const std::vector<VkDescriptorSetLayoutBinding> &bindings)
 		{
 			VkDescriptorSetLayoutCreateInfo layoutInfo = {};
 			layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-			layoutInfo.bindingCount = bindings.size();
+			layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
 			layoutInfo.pBindings = bindings.data();
 
 			VkDescriptorSetLayout descriptorSetLayout = {};
@@ -407,6 +543,7 @@ namespace vkut {
 
 			Logger::LogMessageFormatted("Destroyed descriptor set layout %u!\n", descriptorSetLayout);
 		}
+
 
 		void transitionImageLayout(VkCommandPool commandPool, VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels)
 		{
@@ -515,6 +652,7 @@ namespace vkut {
 			Logger::LogMessageFormatted("Destroyed image %u with memory %u!\n", image.image, image.memory);
 		}
 
+
 		VkFormat findDepthFormat()
 		{
 			return findSupportedFormat(
@@ -522,6 +660,34 @@ namespace vkut {
 				VK_IMAGE_TILING_OPTIMAL,
 				VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
 			);
+		}
+
+
+		VkPipelineLayout createPipelineLayout(std::vector<VkDescriptorSetLayout> descriptorSetLayouts)
+		{
+			VkPipelineLayout pipelineLayout = {};
+
+			VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+				.setLayoutCount = static_cast<uint32_t>(descriptorSetLayouts.size()),
+				.pSetLayouts = descriptorSetLayouts.data()
+			};
+			vkCreatePipelineLayout(vkut::device, &pipelineLayoutCreateInfo, nullptr, &pipelineLayout);
+			Logger::LogMessageFormatted("Created pipeline layout %u!\n", pipelineLayout);
+			return pipelineLayout;
+		}
+		
+		void destroyPipelineLayout(VkPipelineLayout pipelineLayout)
+		{
+			vkDestroyPipelineLayout(vkut::device, pipelineLayout, nullptr);
+			Logger::LogMessageFormatted("Destroyed pipeline layout %u!\n", pipelineLayout);
+		}
+
+		void destroyPipeline(VkPipeline pipeline)
+		{
+			vkDestroyPipeline(vkut::device, pipeline, nullptr);
+			Logger::LogMessageFormatted("Destroyed pipeline %u!\n", pipeline);
 		}
 
 		VkRenderPass createRenderPass(const std::vector<VkAttachmentDescription> &colorDescriptions, Optional<VkAttachmentDescription> depthDescription)
@@ -590,6 +756,7 @@ namespace vkut {
 			Logger::LogMessageFormatted("Destroyed render pass %u!\n", renderPass);
 		}
 
+
 		VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels)
 		{
 			VkImageView returnImageView;
@@ -620,6 +787,7 @@ namespace vkut {
 			Logger::LogMessageFormatted("Destroyed image view %u!\n", view);
 		}
 
+
 		std::vector<VkCommandBuffer> createCommandBuffers(VkCommandPool commandPool, size_t amount, VkCommandBufferLevel level)
 		{
 			assert(amount != 0);
@@ -642,6 +810,21 @@ namespace vkut {
 		{
 			vkFreeCommandBuffers(vkut::device, commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
 			Logger::LogMessageFormatted("Destroyed %u command buffers!\n", commandBuffers.size());
+		}
+
+		void startRecordCommandBuffer(VkCommandBuffer commandBuffer)
+		{
+			VkCommandBufferBeginInfo beginInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+				.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT
+			};
+			VK_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo));
+		}
+
+		void endRecordCommandBuffer(VkCommandBuffer commandBuffer)
+		{
+			VK_CHECK(vkEndCommandBuffer(commandBuffer));
 		}
 	}
 
@@ -1003,4 +1186,88 @@ namespace vkut {
 			Logger::LogMessage("Destroyed window!");
 		}
 	}
+
+	//todo: clean this up, make it actually work
+	namespace raytracing {
+
+		PFN_vkCreateAccelerationStructureKHR vkCreateAccelerationStructureKHR;
+		PFN_vkDestroyAccelerationStructureKHR vkDestroyAccelerationStructureKHR;
+		PFN_vkBindAccelerationStructureMemoryKHR vkBindAccelerationStructureMemoryKHR;
+		PFN_vkGetAccelerationStructureMemoryRequirementsKHR vkGetAccelerationStructureMemoryRequirementsKHR;
+		PFN_vkCmdBuildAccelerationStructureKHR vkCmdBuildAccelerationStructureKHR;
+		PFN_vkCreateRayTracingPipelinesKHR vkCreateRayTracingPipelinesKHR;
+		PFN_vkGetRayTracingShaderGroupHandlesKHR vkGetRayTracingShaderGroupHandlesKHR;
+		PFN_vkCmdTraceRaysKHR vkCmdTraceRaysKHR;
+
+		template<typename T>
+		void setFunctionPointer(T &pointer, const char *name) 
+		{ 
+			pointer = reinterpret_cast<T>(vkGetDeviceProcAddr(vkut::device, name));
+		}
+#define VK_SET_FUNC_PTR(func) (setFunctionPointer(func, #func))
+
+		void initRaytracingFunctions()
+		{
+			
+			VK_SET_FUNC_PTR(vkCreateAccelerationStructureKHR);
+			VK_SET_FUNC_PTR(vkDestroyAccelerationStructureKHR);
+			VK_SET_FUNC_PTR(vkBindAccelerationStructureMemoryKHR);
+			VK_SET_FUNC_PTR(vkGetAccelerationStructureMemoryRequirementsKHR);
+			VK_SET_FUNC_PTR(vkCmdBuildAccelerationStructureKHR);
+			VK_SET_FUNC_PTR(vkCreateRayTracingPipelinesKHR);
+			VK_SET_FUNC_PTR(vkGetRayTracingShaderGroupHandlesKHR);
+			VK_SET_FUNC_PTR(vkCmdTraceRaysKHR);
+
+		}
+
+		void getPhysicalDeviceRaytracingProperties() 
+		{
+			physicalDeviceRaytracingProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PROPERTIES_NV;
+			VkPhysicalDeviceProperties2 deviceProps2{};
+			deviceProps2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+			deviceProps2.pNext = &physicalDeviceRaytracingProperties;
+			vkGetPhysicalDeviceProperties2(vkut::physicalDevice, &deviceProps2);
+		}
+
+		VkAccelerationStructureKHR createAccelerationStructure()
+		{
+			VkAccelerationStructureCreateInfoKHR info;
+			
+			VkAccelerationStructureKHR accelerationCreature;
+			vkCreateAccelerationStructureKHR(vkut::device, &info, nullptr, &accelerationCreature);
+			return accelerationCreature;
+		}
+
+		void destroyAccelerationStructure(VkAccelerationStructureKHR accelerationStructure)
+		{
+			vkDestroyAccelerationStructureKHR(vkut::device, accelerationStructure, nullptr);
+		}
+
+		VkPipeline createPipeline(VkPipelineLayout layout)
+		{
+			VkPipeline pipeline = {};
+			VkRayTracingPipelineCreateInfoKHR info;
+			VkGraphicsPipelineCreateInfo pipelineInfo = {};
+			//todo: actually fill this in with stuff
+			info.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;
+			info.stageCount = 0;
+			info.pStages = nullptr;
+			info.layout = layout;
+			info.basePipelineHandle = VK_NULL_HANDLE; // Optional
+			info.basePipelineIndex = -1; // Optional
+			info.flags = 0;
+			info.groupCount = 0;
+			info.pGroups = 0;
+			info.libraries = {};
+			info.maxRecursionDepth = 10;
+			info.pLibraryInterface = 0;
+
+			VK_CHECK(vkCreateRayTracingPipelinesKHR(vkut::device, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline));
+			Logger::LogMessageFormatted("Created raytracing pipeline %u!\n", pipeline);
+
+			return pipeline;
+		}
+
+	}
+
 }

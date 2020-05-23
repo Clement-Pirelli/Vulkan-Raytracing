@@ -23,17 +23,19 @@ private:
 		VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
 		VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME
 	};
-	const float vertices[9] = {
+	const std::vector<float> vertices = {
 		0.25f, 0.25f, 0.0f,
 		0.75f, 0.25f, 0.0f,
 		0.50f, 0.75f, 0.0f
 	};
-	const uint32_t indices[3] = { 0, 1, 2 };
+	const std::vector<uint32_t> indices = { 0, 1, 2 };
 	static constexpr size_t maxFramesInFlight = 2;
+	size_t currentFrame = 0;
 
 	GLFWwindow *window = nullptr;
 	int width = 1366;
 	int height = 768;
+	bool windowResized = false;
 
 	VkRenderPass renderPass = {};
 	VkCommandPool commandPool = {};
@@ -45,7 +47,12 @@ private:
 	void createDepthResources();
 	void createFramebuffers();
 
-	void cleanupSwapchainDependents();
 	void recreateSwapchainDependents();
+
+	void recordCommandBuffers();
+
+	void drawFrame();
+
+	static void framebufferResizeCallback(GLFWwindow *window, int width, int height);
 };
 
