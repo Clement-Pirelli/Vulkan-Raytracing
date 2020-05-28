@@ -105,6 +105,14 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>glfw3.lib;vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PreBuildEvent>
+      <Command>cd $(SolutionDir)Assets\shaders
+
+for %%i in (*.vert *.frag *.comp, *.rchit *.rmiss *.rgen *rahit) do "glslangValidator.exe" -V "%%~i" -o "%%~i.spv"</Command>
+    </PreBuildEvent>
+    <PreBuildEvent>
+      <Message>Compiling shaders</Message>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -122,6 +130,14 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>glfw3.lib;vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PreBuildEvent>
+      <Command>cd $(SolutionDir)Assets\shaders
+
+for %%i in (*.vert *.frag *.comp, *.rchit *.rmiss *.rgen *rahit) do "glslangValidator.exe" -V "%%~i" -o "%%~i.spv"</Command>
+    </PreBuildEvent>
+    <PreBuildEvent>
+      <Message>Compiling shaders</Message>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -143,6 +159,14 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>glfw3.lib;vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PreBuildEvent>
+      <Command>cd $(SolutionDir)Assets\shaders
+
+for %%i in (*.vert *.frag *.comp, *.rchit *.rmiss *.rgen *rahit) do "glslangValidator.exe" -V "%%~i" -o "%%~i.spv"</Command>
+    </PreBuildEvent>
+    <PreBuildEvent>
+      <Message>Compiling shaders</Message>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -164,17 +188,33 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>glfw3.lib;vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PreBuildEvent>
+      <Command>cd $(SolutionDir)Assets\shaders
+
+for %%i in (*.vert *.frag *.comp, *.rchit *.rmiss *.rgen *rahit) do "glslangValidator.exe" -V "%%~i" -o "%%~i.spv"</Command>
+    </PreBuildEvent>
+    <PreBuildEvent>
+      <Message>Compiling shaders</Message>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Dependencies\custom\Logger\Logger.cpp" />
+    <ClCompile Include="Dependencies\custom\RenderDocApi\RenderDoc.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Raytracer.cpp" />
     <ClCompile Include="vkutils.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Dependencies\custom\Logger\Logger.h" />
+    <ClInclude Include="Dependencies\custom\RenderDocApi\RenderDoc.h" />
+    <ClInclude Include="Files.h" />
     <ClInclude Include="Raytracer.h" />
     <ClInclude Include="vkutils.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Assets\shaders\anyHit.glsl" />
+    <None Include="Assets\shaders\closestHit.glsl" />
+    <None Include="Assets\shaders\miss.glsl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

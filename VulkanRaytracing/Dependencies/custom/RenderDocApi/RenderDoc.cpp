@@ -7,10 +7,11 @@
 
 RenderDoc::RenderDoc()
 {
-	if (HMODULE mod = GetModuleHandleA("renderdoc.dll"))
+	HMODULE mod = GetModuleHandleA("renderdoc.dll");
+	if (mod != NULL)
 	{
 		pRENDERDOC_GetAPI RENDERDOC_GetAPI = (pRENDERDOC_GetAPI)GetProcAddress(mod, "RENDERDOC_GetAPI");
-		int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_4_0, (void**)&api);
+		int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_4_1, (void**)&api);
 		if (ret == 1)
 		{
 			initDone = true;
@@ -18,12 +19,12 @@ RenderDoc::RenderDoc()
 		else
 		{
 			initDone = false;
-			std::cerr << "Could not initialize renderdoc!\n";
+			std::cerr << "Could not initialize renderdoc! Error : "<< GetLastError() << "\n";
 		}
 	}
 	else
 	{
-		std::cerr << "Could not get renderDoc module handle!\n";
+		std::cerr << "Could not get renderDoc module handle! Error : " << GetLastError() << "\n";
 	}
 }
 

@@ -2,44 +2,71 @@
 #include <iostream>
 #include <cstdarg>
 
-void Logger::LogMessage(const char *message)
+#ifdef NDEBUG
+Logger::Verbosity Logger::verbosity = Logger::Verbosity::WARNINGS
+#else
+Logger::Verbosity Logger::verbosity = Logger::Verbosity::TRIVIAL;
+#endif
+
+#define CHECK_VERBOSITY(against) if(verbosity < against) return;
+
+#define LOG(prefix, message) std::cout << "[" << prefix << "] " << message << '\n';
+
+#define LOG_FORMATTED(prefix, format)	\
+std::cout << "[" << prefix << "] ";		\
+va_list list;							\
+va_start(list, format);					\
+vprintf(format, list);					\
+va_end(list);							\
+std::cout << '\n';						\
+
+
+void Logger::setVerbosity(Verbosity givenVerbosity)
 {
-	std::cout << "[message] " << message << '\n';
+	Logger::verbosity = givenVerbosity;
 }
 
-void Logger::LogMessageFormatted(const char * const format, ...)
+void Logger::logMessage(const char *message)
 {
-	std::cout << "[message] ";
-
-	//formatted argument list
-	va_list list;
-	va_start(list, format);
-	vprintf(format, list);
-	va_end(list);
+	CHECK_VERBOSITY(Logger::Verbosity::MESSAGE);
+	LOG("message", message);
 }
 
-void Logger::LogMessage(const char *message, int line, const char *file)
+void Logger::logMessageFormatted(const char * const format, ...)
 {
-	std::cout << "[message] " << message << " (line: " << line << ", file: " << file <<")\n";
+	CHECK_VERBOSITY(Logger::Verbosity::MESSAGE);
+	LOG_FORMATTED("message", format);
 }
 
-void Logger::LogError(const char *error)
+void Logger::logError(const char *error)
 {
-	std::cerr << "[error!!!] " << error << '\n';
+	LOG("error!!!", error);
 }
 
-void Logger::LogErrorFormatted(const char *format, ...)
+void Logger::logErrorFormatted(const char *format, ...)
 {
-	std::cout << "[error!!!] ";
-
-	//formatted argument list
-	va_list list;
-	va_start(list, format);
-	vprintf(format, list);
-	va_end(list);
+	LOG_FORMATTED("error!!!", format);
+}
+void Logger::logWarning(const char *message)
+{
+	CHECK_VERBOSITY(Logger::Verbosity::WARNING);
+	LOG("warning!", message);
 }
 
-void Logger::LogError(const char *error, int line, const char *file)
+void Logger::logWarningFormatted(const char *format, ...)
 {
-	std::cerr << "[error!!!] " << error << " (line: " << line << ", file: " << file << ")\n";
+	CHECK_VERBOSITY(Logger::Verbosity::WARNING); 
+	LOG_FORMATTED("warning!", format);
+}
+
+void Logger::logTrivial(const char *message)
+{
+	CHECK_VERBOSITY(Logger::Verbosity::TRIVIAL);
+	LOG("trivial", message);
+}
+
+void Logger::logTrivialFormatted(const char *format, ...)
+{
+	CHECK_VERBOSITY(Logger::Verbosity::TRIVIAL);
+	LOG_FORMATTED("trivial", format);
 }

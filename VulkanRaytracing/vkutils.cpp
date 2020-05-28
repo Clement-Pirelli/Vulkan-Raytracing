@@ -4,12 +4,22 @@
 #include "Logger/Logger.h"
 #include <string>
 #include <set>
+#include "Files.h"
 
 #pragma warning(disable : 4100)
 #pragma warning(disable : 4702)
 
 namespace vkut {
 	namespace {
+
+#pragma region SMALL_UTILITIES
+		template<typename T>
+		void setFunctionPointer(T &pointer, const char *name)
+		{
+			pointer = reinterpret_cast<T>(vkGetDeviceProcAddr(vkut::device, name));
+		}
+
+#define VK_SET_FUNC_PTR(func) (setFunctionPointer(func, #func))
 
 
 		template <class T>
@@ -23,6 +33,7 @@ namespace vkut {
 		{
 			return (a > b) ? a : b;
 		}
+#pragma endregion
 
 #pragma region VALIDATION_LAYERS
 
@@ -99,7 +110,7 @@ namespace vkut {
 
 		VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData)
 		{
-			Logger::LogErrorFormatted("[validation]: %s\n", pCallbackData->pMessage);
+			Logger::logWarningFormatted("[validation]: %s ", pCallbackData->pMessage);
 			return VK_FALSE;
 		}
 
@@ -218,7 +229,7 @@ namespace vkut {
 				}
 			}
 
-			Logger::LogError("Couldn't find format!");
+			Logger::logError("Couldn't find format!");
 			assert(false);
 			return VkFormat::VK_FORMAT_UNDEFINED;
 		}
@@ -234,7 +245,7 @@ namespace vkut {
 				}
 			}
 
-			Logger::LogError("Failed to find suitable memory type!");
+			Logger::logError("Failed to find suitable memory type!");
 			assert(false);
 			return ~0U;
 		}
@@ -280,6 +291,24 @@ namespace vkut {
 			vkQueueWaitIdle(vkut::graphicsQueue);
 
 			vkFreeCommandBuffers(vkut::device, commandPool, 1, &commandBuffer);
+		}
+
+		uint64_t GetBufferAddress(VkBuffer buffer)
+		{
+
+			static PFN_vkGetBufferDeviceAddressKHR vkGetBufferDeviceAddressKHR = nullptr;
+
+			if (vkGetBufferDeviceAddressKHR == nullptr)
+				VK_SET_FUNC_PTR(vkGetBufferDeviceAddressKHR);
+
+			VkBufferDeviceAddressInfoKHR bufferAddressInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+				.pNext = nullptr,
+				.buffer = buffer,
+			};
+
+			return vkGetBufferDeviceAddressKHR(device, &bufferAddressInfo);
 		}
 
 #pragma region PHYSICAL_DEVICE
@@ -386,7 +415,39 @@ namespace vkut {
 
 	namespace common {
 
-		Buffer createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags propertyFlags)
+		VkShaderModule createShaderModule(const char *filePath)
+		{
+			std::vector<char> code = {};
+			
+			{
+				FileReader reader = FileReader(std::string(filePath));
+				size_t size = reader.length();
+				code.resize(size);
+				reader.read(code.data(), code.size());
+			}
+			
+			VkShaderModuleCreateInfo createInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+				.codeSize = code.size(),
+				.pCode = reinterpret_cast<const uint32_t *>(code.data())
+			};
+
+			VkShaderModule shaderModule;
+			VK_CHECK(vkCreateShaderModule(vkut::device, &createInfo, nullptr, &shaderModule));
+			Logger::logTrivialFormatted("Created shader module %u!", shaderModule);
+
+			return shaderModule;
+		}
+
+		void destroyShaderModule(VkShaderModule shaderModule)
+		{
+			vkDestroyShaderModule(device, shaderModule, nullptr);
+			Logger::logTrivialFormatted("Destroyed shader module %u!", shaderModule);
+		}
+
+
+		Buffer createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags propertyFlags, VkMemoryAllocateFlagsInfo flagsInfo)
 		{
 			Buffer buffer 
 			{
@@ -401,7 +462,7 @@ namespace vkut {
 				.sharingMode = VK_SHARING_MODE_EXCLUSIVE
 			};
 			VK_CHECK(vkCreateBuffer(vkut::device, &bufferInfo, nullptr, &buffer.buffer));
-			Logger::LogMessageFormatted("Created buffer %u!\n", buffer);
+			Logger::logTrivialFormatted("Created buffer %u! ", buffer);
 
 			VkMemoryRequirements memRequirements;
 			vkGetBufferMemoryRequirements(vkut::device, buffer.buffer, &memRequirements);
@@ -413,8 +474,13 @@ namespace vkut {
 				.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, propertyFlags)
 			};
 
+			if (flagsInfo.sType == VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO) 
+			{
+				allocInfo.pNext = &flagsInfo;
+			}
+
 			VK_CHECK(vkAllocateMemory(vkut::device, &allocInfo, nullptr, &buffer.memory));
-			Logger::LogMessageFormatted("Allocated buffer memory %u!\n", buffer.memory);
+			Logger::logTrivialFormatted("Allocated buffer memory %u! ", buffer.memory);
 
 			VK_CHECK(vkBindBufferMemory(vkut::device, buffer.buffer, buffer.memory, 0));
 			
@@ -425,10 +491,11 @@ namespace vkut {
 		{
 			vkDestroyBuffer(vkut::device, buffer.buffer, nullptr);
 			vkFreeMemory(vkut::device, buffer.memory, nullptr);
-			Logger::LogMessageFormatted("Destroyed buffer %u!\n", buffer.buffer);
-			Logger::LogMessageFormatted("Freed buffer memory %u!\n", buffer.memory);
+			Logger::logTrivialFormatted("Destroyed buffer %u! ", buffer.buffer);
+			Logger::logTrivialFormatted("Freed buffer memory %u! ", buffer.memory);
 		}
 
+		//assumes one descriptor per swapchain image
 		VkDescriptorPool createDescriptorPool(const std::vector<VkDescriptorType> &descriptorTypes)
 		{
 			std::vector<VkDescriptorPoolSize> poolSizes = std::vector<VkDescriptorPoolSize>(descriptorTypes.size());
@@ -452,74 +519,58 @@ namespace vkut {
 
 			VkDescriptorPool descriptorPool = {};
 			VK_CHECK(vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool));
-			Logger::LogMessageFormatted("Created descriptor pool %u!\n", descriptorPool);
+			Logger::logMessageFormatted("Created descriptor pool %u! ", descriptorPool);
 			return descriptorPool;
 		}
 
+		//implicitly destroys all descriptor sets from this pool
 		void destroyDescriptorPool(VkDescriptorPool descriptorPool)
 		{
 			vkDestroyDescriptorPool(vkut::device, descriptorPool, nullptr);
-			Logger::LogMessageFormatted("Destroyed descriptor pool %u!\n", descriptorPool);
+			Logger::logMessageFormatted("Destroyed descriptor pool %u! ", descriptorPool);
 		}
 		
-		std::vector<VkDescriptorSet> createDescriptorSets(VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool, const std::vector<DescriptorSetInfo> &descriptorSetInfos)
+		VkDescriptorSet createDescriptorSet(VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool, const std::vector<DescriptorSetInfo> &descriptorSetInfos)
 		{
-			std::vector<VkDescriptorSetLayout> layouts = std::vector<VkDescriptorSetLayout>(swapChainImages.size());
-			for (size_t i = 0; i < layouts.size(); i++)
+			VkDescriptorSetAllocateInfo allocInfo
 			{
-				layouts.push_back(descriptorSetLayout);
-			}
+				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+				.descriptorPool = descriptorPool,
+				.descriptorSetCount = 1,
+				.pSetLayouts = &descriptorSetLayout
+			};
 
-			VkDescriptorSetAllocateInfo allocInfo = {};
-			allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-			allocInfo.descriptorPool = descriptorPool;
-			allocInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
-			allocInfo.pSetLayouts = layouts.data();
-
-			std::vector<VkDescriptorSet> descriptorSets = std::vector<VkDescriptorSet>(layouts.size());
+			VkDescriptorSet descriptorSet = {};
 			
-			VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()));
-			for (size_t i = 0; i < descriptorSets.size(); i++) 
-			{
-				Logger::LogMessageFormatted("Allocated descriptor set %u!", descriptorSets[i]);
-			}
+			VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet));
+			Logger::logMessageFormatted("Allocated descriptor set %u!", descriptorSet);
 
-			for (size_t i = 0; i < descriptorSets.size(); i++)
+			std::vector<VkWriteDescriptorSet> descriptorWrites = std::vector<VkWriteDescriptorSet>(descriptorSetInfos.size());
+			for (size_t i = 0; i < descriptorWrites.size(); i++)
 			{
-				std::vector<VkWriteDescriptorSet> descriptorWrites = std::vector<VkWriteDescriptorSet>();
-				for(size_t j = 0; j < descriptorWrites.size(); j++)
+				const DescriptorSetInfo &info = descriptorSetInfos[i];
+
+				VkWriteDescriptorSet descriptorWrite
 				{
-					const DescriptorSetInfo &info = descriptorSetInfos[j];
-					
-					VkWriteDescriptorSet descriptorWrite
-					{
-						.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-						.pNext = info.pNext,
-						.dstSet = descriptorSets[i],
-						.dstBinding = info.dstBinding,
-						.dstArrayElement = info.dstArrayElement,
-						.descriptorCount = info.descriptorCount,
-						.descriptorType = info.descriptorType,
-						.pImageInfo = info.pImageInfo,
-						.pBufferInfo = info.pBufferInfo,
-						.pTexelBufferView = info.pTexelBufferView,
-					};
-				}
+					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+					.pNext = info.pNext,
+					.dstSet = descriptorSet,
+					.dstBinding = info.dstBinding,
+					.dstArrayElement = info.dstArrayElement,
+					.descriptorCount = info.descriptorCount,
+					.descriptorType = info.descriptorType,
+					.pImageInfo = info.pImageInfo,
+					.pBufferInfo = info.pBufferInfo,
+					.pTexelBufferView = info.pTexelBufferView,
+				};
 
-				vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
-				Logger::LogMessageFormatted("Updated descriptor set %u!\n", descriptorSets[i]);
-			}
-			return descriptorSets;
-		}
-
-		void destroyDescriptorSets(const std::vector<VkDescriptorSet> &descriptorSets, VkDescriptorPool descriptorPool)
-		{
-			vkFreeDescriptorSets(vkut::device, descriptorPool, static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data());
-			for (size_t i = 0; i < descriptorSets.size(); i++)
-			{
-				Logger::LogMessageFormatted("Freed descriptor set %u!", descriptorSets[i]);
+				descriptorWrites[i] = descriptorWrite;
 			}
 
+			vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+			Logger::logMessageFormatted("Updated descriptor set %u! ", descriptorSet);
+			
+			return descriptorSet;
 		}
 
 		VkDescriptorSetLayout createDescriptorSetLayout(const std::vector<VkDescriptorSetLayoutBinding> &bindings)
@@ -532,7 +583,7 @@ namespace vkut {
 			VkDescriptorSetLayout descriptorSetLayout = {};
 			VK_CHECK(vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout));
 
-			Logger::LogMessageFormatted("Created descriptor set layout %u!\n", descriptorSetLayout);
+			Logger::logMessageFormatted("Created descriptor set layout %u! ", descriptorSetLayout);
 
 			return descriptorSetLayout;
 		}
@@ -541,14 +592,36 @@ namespace vkut {
 		{
 			vkDestroyDescriptorSetLayout(vkut::device, descriptorSetLayout, nullptr);
 
-			Logger::LogMessageFormatted("Destroyed descriptor set layout %u!\n", descriptorSetLayout);
+			Logger::logMessageFormatted("Destroyed descriptor set layout %u! ", descriptorSetLayout);
 		}
 
 
-		void transitionImageLayout(VkCommandPool commandPool, VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels)
+		void transitionImageLayout(
+			VkCommandPool commandPool, 
+			VkImage image,
+			VkImageLayout oldLayout,
+			VkImageLayout newLayout,
+			VkImageSubresourceRange subresourceRange,
+			VkPipelineStageFlags sourceStage,
+			VkPipelineStageFlags destinationStage)
 		{
-			VkCommandBuffer commandBufferData = initSingleTimeCommands(commandPool);
+			VkCommandBuffer commandBuffer = initSingleTimeCommands(commandPool);
 
+			transitionImageLayout(commandBuffer, image, oldLayout, newLayout, subresourceRange, sourceStage, destinationStage);
+
+			submitSingleTimeCommands(commandPool, commandBuffer);
+		}
+
+		//taken from : https://github.com/SaschaWillems/Vulkan/blob/master/base/VulkanTools.cpp
+		void transitionImageLayout(
+			VkCommandBuffer commandBuffer, 
+			VkImage image,
+			VkImageLayout oldLayout, 
+			VkImageLayout newLayout, 
+			VkImageSubresourceRange subresourceRange,
+			VkPipelineStageFlags sourceStage,
+			VkPipelineStageFlags destinationStage)
+		{
 			VkImageMemoryBarrier barrier
 			{
 				.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -559,59 +632,105 @@ namespace vkut {
 				.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 
 				.image = image,
-				.subresourceRange = {
-					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-					.baseMipLevel = 0,
-					.levelCount = mipLevels,
-					.baseArrayLayer = 0,
-					.layerCount = 1,
-				}
+				.subresourceRange = subresourceRange
 			};
 
-
-			VkPipelineStageFlags sourceStage = {};
-			VkPipelineStageFlags destinationStage = {};
-
-			if (newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
-				barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-
-				if (hasStencilComponent(format)) {
-					barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
-				}
-			}
-			else {
-				barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			}
-
-			if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+			switch (oldLayout)
+			{
+			case VK_IMAGE_LAYOUT_UNDEFINED:
+				// Image layout is undefined (or does not matter)
+				// Only valid as initial layout
+				// No flags required, listed only for completeness
 				barrier.srcAccessMask = 0;
-				barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+				break;
 
-				sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-				destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-			}
-			else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+			case VK_IMAGE_LAYOUT_PREINITIALIZED:
+				// Image is preinitialized
+				// Only valid as initial layout for linear images, preserves memory contents
+				// Make sure host writes have been finished
+				barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+				break;
+
+			case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+				// Image is a color attachment
+				// Make sure any writes to the color buffer have been finished
+				barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+				break;
+
+			case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+				// Image is a depth/stencil attachment
+				// Make sure any writes to the depth/stencil buffer have been finished
+				barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+				break;
+
+			case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+				// Image is a transfer source 
+				// Make sure any reads from the image have been finished
+				barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+				break;
+
+			case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+				// Image is a transfer destination
+				// Make sure any writes to the image have been finished
 				barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+				break;
+
+			case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+				// Image is read by a shader
+				// Make sure any shader reads from the image have been finished
+				barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+				break;
+			default:
+				// Other source layouts aren't handled (yet)
+				
+				break;
+			}
+
+			// Target layouts (new)
+			// Destination access mask controls the dependency for the new image layout
+			switch (newLayout)
+			{
+			case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+				// Image will be used as a transfer destination
+				// Make sure any writes to the image have been finished
+				barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+				break;
+
+			case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+				// Image will be used as a transfer source
+				// Make sure any reads from the image have been finished
+				barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+				break;
+
+			case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+				// Image will be used as a color attachment
+				// Make sure any writes to the color buffer have been finished
+				barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+				break;
+
+			case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+				// Image layout will be used as a depth/stencil attachment
+				// Make sure any writes to depth/stencil buffer have been finished
+				barrier.dstAccessMask = barrier.dstAccessMask | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+				break;
+
+			case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+				// Image will be read in a shader (sampler, input attachment)
+				// Make sure any writes to the image have been finished
+				if (barrier.srcAccessMask == 0)
+				{
+					barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+				}
 				barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-				sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-				destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+				break;
+			default:
+				// Other source layouts aren't handled (yet)
+				
+				break;
 			}
-			else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
-				barrier.srcAccessMask = 0;
-				barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-
-				sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-				destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-			}
-			else {
-				Logger::LogError("Unsupported layout transition!");
-				assert(false);
-			}
-
 
 			vkCmdPipelineBarrier(
-				commandBufferData,
+				commandBuffer,
 				sourceStage,
 				destinationStage,
 				0,
@@ -619,8 +738,6 @@ namespace vkut {
 				0, nullptr,
 				1, &barrier
 			);
-
-			submitSingleTimeCommands(commandPool, commandBufferData);
 		}
 
 		Image createImage(VkImageCreateInfo imageCreateInfo, VkMemoryPropertyFlags properties)
@@ -641,7 +758,7 @@ namespace vkut {
 			VK_CHECK(vkAllocateMemory(device, &allocInfo, nullptr, &image.memory));
 			VK_CHECK(vkBindImageMemory(device, image.image, image.memory, 0));
 
-			Logger::LogMessageFormatted("Created image %u with memory %u!\n", image.image, image.memory);
+			Logger::logMessageFormatted("Created image %u with memory %u! ", image.image, image.memory);
 			return image;
 		}
 
@@ -649,7 +766,7 @@ namespace vkut {
 		{
 			vkDestroyImage(vkut::device, image.image, nullptr);
 			vkFreeMemory(vkut::device, image.memory, nullptr);
-			Logger::LogMessageFormatted("Destroyed image %u with memory %u!\n", image.image, image.memory);
+			Logger::logMessageFormatted("Destroyed image %u with memory %u! ", image.image, image.memory);
 		}
 
 
@@ -674,20 +791,20 @@ namespace vkut {
 				.pSetLayouts = descriptorSetLayouts.data()
 			};
 			vkCreatePipelineLayout(vkut::device, &pipelineLayoutCreateInfo, nullptr, &pipelineLayout);
-			Logger::LogMessageFormatted("Created pipeline layout %u!\n", pipelineLayout);
+			Logger::logMessageFormatted("Created pipeline layout %u! ", pipelineLayout);
 			return pipelineLayout;
 		}
 		
 		void destroyPipelineLayout(VkPipelineLayout pipelineLayout)
 		{
 			vkDestroyPipelineLayout(vkut::device, pipelineLayout, nullptr);
-			Logger::LogMessageFormatted("Destroyed pipeline layout %u!\n", pipelineLayout);
+			Logger::logMessageFormatted("Destroyed pipeline layout %u! ", pipelineLayout);
 		}
 
 		void destroyPipeline(VkPipeline pipeline)
 		{
 			vkDestroyPipeline(vkut::device, pipeline, nullptr);
-			Logger::LogMessageFormatted("Destroyed pipeline %u!\n", pipeline);
+			Logger::logMessageFormatted("Destroyed pipeline %u! ", pipeline);
 		}
 
 		VkRenderPass createRenderPass(const std::vector<VkAttachmentDescription> &colorDescriptions, Optional<VkAttachmentDescription> depthDescription)
@@ -700,7 +817,7 @@ namespace vkut {
 					VkAttachmentReference
 					{
 						.attachment = static_cast<uint32_t>(i),
-						.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+						.layout = colorDescriptions[i].finalLayout,
 					}
 				);
 			}
@@ -745,7 +862,7 @@ namespace vkut {
 
 			VkRenderPass renderPass;
 			VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
-			Logger::LogMessageFormatted("Created render pass %u!\n", renderPass);
+			Logger::logMessageFormatted("Created render pass %u! ", renderPass);
 
 			return renderPass;
 		}
@@ -753,7 +870,7 @@ namespace vkut {
 		void destroyRenderPass(VkRenderPass renderPass)
 		{
 			vkDestroyRenderPass(vkut::device, renderPass, nullptr);
-			Logger::LogMessageFormatted("Destroyed render pass %u!\n", renderPass);
+			Logger::logMessageFormatted("Destroyed render pass %u! ", renderPass);
 		}
 
 
@@ -776,7 +893,7 @@ namespace vkut {
 			};
 
 			VK_CHECK(vkCreateImageView(vkut::device, &viewInfo, nullptr, &returnImageView));
-			Logger::LogMessageFormatted("Created image view %u!\n", returnImageView);
+			Logger::logMessageFormatted("Created image view %u! ", returnImageView);
 
 			return returnImageView;
 		}
@@ -784,7 +901,7 @@ namespace vkut {
 		void destroyImageView(VkImageView view)
 		{
 			vkDestroyImageView(vkut::device, view, nullptr);
-			Logger::LogMessageFormatted("Destroyed image view %u!\n", view);
+			Logger::logMessageFormatted("Destroyed image view %u! ", view);
 		}
 
 
@@ -801,7 +918,7 @@ namespace vkut {
 
 			VK_CHECK(vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()));
 
-			Logger::LogMessageFormatted("Created %u command buffers!\n", amount);
+			Logger::logMessageFormatted("Created %u command buffers! ", amount);
 
 			return commandBuffers;
 		}
@@ -809,7 +926,7 @@ namespace vkut {
 		void destroyCommandBuffers(VkCommandPool commandPool, const std::vector<VkCommandBuffer> &commandBuffers)
 		{
 			vkFreeCommandBuffers(vkut::device, commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
-			Logger::LogMessageFormatted("Destroyed %u command buffers!\n", commandBuffers.size());
+			Logger::logMessageFormatted("Destroyed %u command buffers! ", commandBuffers.size());
 		}
 
 		void startRecordCommandBuffer(VkCommandBuffer commandBuffer)
@@ -848,7 +965,7 @@ namespace vkut {
 				VK_CHECK(vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences.data()[i]));
 			};
 
-			Logger::LogMessage("Created sync objects!");
+			Logger::logMessage("Created sync objects!");
 		}
 
 		void destroySyncObjects()
@@ -862,7 +979,7 @@ namespace vkut {
 			{
 				vkDestroyFence(vkut::device, inFlightFences[i], nullptr);
 			};
-			Logger::LogMessage("Destroyed sync objects!");
+			Logger::logMessage("Destroyed sync objects!");
 		}
 
 		VkFramebuffer createRenderPassFramebuffer(VkRenderPass renderPass, uint32_t width, uint32_t height, const std::vector<VkImageView> &colorViews, Optional<VkImageView> depthAttachment)
@@ -883,14 +1000,14 @@ namespace vkut {
 				.layers = 1
 			};
 			VK_CHECK(vkCreateFramebuffer(vkut::device, &framebufferInfo, nullptr, &framebuffer));
-			Logger::LogMessageFormatted("Created framebuffer %u with renderpass %u!\n", framebuffer, renderPass);
+			Logger::logMessageFormatted("Created framebuffer %u with renderpass %u! ", framebuffer, renderPass);
 			return framebuffer;
 		}
 
 		void destroyFramebuffer(VkFramebuffer framebuffer)
 		{
 			vkDestroyFramebuffer(vkut::device, framebuffer, nullptr);
-			Logger::LogMessageFormatted("Destroyed framebuffer %u!\n", framebuffer);
+			Logger::logMessageFormatted("Destroyed framebuffer %u! ", framebuffer);
 		}
 
 		VkCommandPool createGraphicsCommandPool()
@@ -907,7 +1024,7 @@ namespace vkut {
 			VkCommandPool commandPool;
 			VK_CHECK(vkCreateCommandPool(vkut::device, &poolInfo, nullptr, &commandPool));
 
-			Logger::LogMessageFormatted("Created graphics command pool %u!\n", commandPool);
+			Logger::logMessageFormatted("Created graphics command pool %u! ", commandPool);
 
 			return commandPool;
 		}
@@ -915,7 +1032,7 @@ namespace vkut {
 		void destroyCommandPool(VkCommandPool commandPool)
 		{
 			vkDestroyCommandPool(vkut::device, commandPool, nullptr);
-			Logger::LogMessageFormatted("Destroyed command pool %u!\n", commandPool);
+			Logger::logMessageFormatted("Destroyed command pool %u! ", commandPool);
 		}
 
 		void createSwapchainImageViews()
@@ -925,7 +1042,7 @@ namespace vkut {
 			{
 				swapChainImageViews[i] = common::createImageView(swapChainImages[i], swapChainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
 			}
-			Logger::LogMessage("Created swapchain image views!");
+			Logger::logMessage("Created swapchain image views!");
 		}
 
 		void destroySwapchainImageViews()
@@ -934,10 +1051,10 @@ namespace vkut {
 			{
 				common::destroyImageView(swapChainImageViews[i]);
 			}
-			Logger::LogMessage("Destroyed swapchain image views!");
+			Logger::logMessage("Destroyed swapchain image views!");
 		}
 
-		void createSwapChain(uint32_t width, uint32_t height)
+		void createSwapChain(uint32_t width, uint32_t height, VkImageUsageFlags flags)
 		{
 			SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
 
@@ -962,7 +1079,7 @@ namespace vkut {
 				.imageColorSpace = surfaceFormat.colorSpace,
 				.imageExtent = extent,
 				.imageArrayLayers = 1,
-				.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+				.imageUsage = flags,
 				.preTransform = swapChainSupport.capabilities.currentTransform,
 				.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
 				.presentMode = presentMode,
@@ -986,7 +1103,7 @@ namespace vkut {
 
 
 			VK_CHECK(vkCreateSwapchainKHR(vkut::device, &createInfo, nullptr, &vkut::swapChain));
-			Logger::LogMessage("Created swapchain!");
+			Logger::logMessage("Created swapchain!");
 
 			vkGetSwapchainImagesKHR(vkut::device, vkut::swapChain, &imageCount, nullptr);
 			swapChainImages.resize(imageCount);
@@ -999,10 +1116,10 @@ namespace vkut {
 		void destroySwapChain()
 		{
 			vkDestroySwapchainKHR(device, swapChain, nullptr);
-			Logger::LogMessage("Destroyed swapchain!");
+			Logger::logMessage("Destroyed swapchain!");
 		}
 
-		void createLogicalDevice()
+		void createLogicalDevice(void *pNext)
 		{
 			QueueFamilyIndices indices = findQueueFamilies(vkut::physicalDevice);
 
@@ -1025,17 +1142,39 @@ namespace vkut {
 			}
 
 
-			VkPhysicalDeviceFeatures deviceFeatures{
+			VkPhysicalDeviceFeatures deviceFeatures
+			{
 				.samplerAnisotropy = VK_TRUE
 			};
 
-			VkDeviceCreateInfo createInfo{
+			VkPhysicalDeviceBufferDeviceAddressFeatures addressFeatures
+			{
+				.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES,
+				.pNext = pNext,
+				.bufferDeviceAddress = VK_TRUE,
+			};
+
+			VkPhysicalDeviceFeatures2 deviceFeatures2
+			{
+				.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+				.pNext = &addressFeatures,
+				.features = deviceFeatures,
+			};
+
+			//While creating the device, also don't set VkDeviceCreateInfo::pEnabledFeatures. 
+			//Fill in VkPhysicalDeviceFeatures2 structure instead and pass it as VkDeviceCreateInfo::pNext. 
+			
+			//Enable this device feature - attach additional structure VkPhysicalDeviceBufferDeviceAddressFeatures* 
+			//to VkPhysicalDeviceFeatures2::pNext and set its member bufferDeviceAddress to VK_TRUE.
+			
+			VkDeviceCreateInfo createInfo
+			{
 				.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+				.pNext = (void*)&deviceFeatures2,
 				.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
 				.pQueueCreateInfos = queueCreateInfos.data(),
 				.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size()),
 				.ppEnabledExtensionNames = deviceExtensions.data(),
-				.pEnabledFeatures = &deviceFeatures,
 			};
 
 			if (enableValidationLayers)
@@ -1049,7 +1188,7 @@ namespace vkut {
 			}
 
 			VK_CHECK(vkCreateDevice(vkut::physicalDevice, &createInfo, nullptr, &vkut::device));
-			Logger::LogMessage("Created logical device!");
+			Logger::logMessage("Created logical device!");
 
 			vkGetDeviceQueue(vkut::device, indices.graphicsFamily.getValue(), 0, &vkut::graphicsQueue);
 			vkGetDeviceQueue(vkut::device, indices.presentFamily.getValue(), 0, &vkut::presentQueue);
@@ -1058,7 +1197,7 @@ namespace vkut {
 		void destroyLogicalDevice()
 		{
 			vkDestroyDevice(vkut::device, nullptr);
-			Logger::LogMessage("Destroyed logical device!");
+			Logger::logMessage("Destroyed logical device!");
 		}
 
 		void choosePhysicalDevice(std::vector<const char *> requiredDeviceExtensions)
@@ -1077,7 +1216,7 @@ namespace vkut {
 				VkPhysicalDevice dev = devices[i];
 				if (isPhysicalDeviceSuitable(dev))
 				{
-					Logger::LogMessage("Chose physical device!");
+					Logger::logMessage("Chose physical device!");
 					vkut::physicalDevice = dev;
 					return;
 				}
@@ -1089,13 +1228,13 @@ namespace vkut {
 		void createSurface(GLFWwindow *window)
 		{
 			VK_CHECK(glfwCreateWindowSurface(vkut::instance, window, nullptr, &vkut::surface));
-			Logger::LogMessage("Created surface!");
+			Logger::logMessage("Created surface!");
 		}
 
 		void destroySurface()
 		{
 			vkDestroySurfaceKHR(vkut::instance, vkut::surface, nullptr);
-			Logger::LogMessage("Destroyed surface!");
+			Logger::logMessage("Destroyed surface!");
 		}
 
 		void createDebugMessenger()
@@ -1107,14 +1246,14 @@ namespace vkut {
 			populateDebugMessengerCreateInfo(createInfo);
 			assert(CreateDebugUtilsMessengerEXT(vkut::instance, &createInfo, nullptr, &debugMessenger) == VK_SUCCESS);
 
-			Logger::LogMessage("Created debug messenger!");
+			Logger::logMessage("Created debug messenger!");
 		}
 
 		void destroyDebugMessenger() {
 			if constexpr (enableValidationLayers)
 			{
 				DestroyDebugUtilsMessengerEXT(vkut::instance, debugMessenger, nullptr);
-				Logger::LogMessage("Destroyed debug messenger!");
+				Logger::logMessage("Destroyed debug messenger!");
 			}
 		}
 
@@ -1134,7 +1273,8 @@ namespace vkut {
 				.apiVersion = VK_API_VERSION_1_2
 			};
 
-			VkInstanceCreateInfo createInfo{
+			VkInstanceCreateInfo createInfo
+			{
 				.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
 				.pApplicationInfo = &appInfo
 			};
@@ -1160,13 +1300,13 @@ namespace vkut {
 			createInfo.ppEnabledExtensionNames = glfwExtensions.data();
 
 			VK_CHECK(vkCreateInstance(&createInfo, nullptr, &vkut::instance));
-			Logger::LogMessage("Created instance!");
+			Logger::logMessage("Created instance!");
 		}
 
 		void destroyInstance()
 		{
 			vkDestroyInstance(vkut::instance, nullptr);
-			Logger::LogMessage("Destroyed instance!");
+			Logger::logMessage("Destroyed instance!");
 		}
 
 		GLFWwindow *createWindow(const char *title, int width, int height)
@@ -1175,7 +1315,7 @@ namespace vkut {
 			glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 			GLFWwindow *window = glfwCreateWindow(width, height, title, NULL, NULL);
 			assert(window != NULL);
-			Logger::LogMessage("Created window!");
+			Logger::logMessage("Created window!");
 			return window;
 		}
 
@@ -1183,28 +1323,11 @@ namespace vkut {
 		{
 			glfwDestroyWindow(window);
 			glfwTerminate();
-			Logger::LogMessage("Destroyed window!");
+			Logger::logMessage("Destroyed window!");
 		}
 	}
 
-	//todo: clean this up, make it actually work
 	namespace raytracing {
-
-		PFN_vkCreateAccelerationStructureKHR vkCreateAccelerationStructureKHR;
-		PFN_vkDestroyAccelerationStructureKHR vkDestroyAccelerationStructureKHR;
-		PFN_vkBindAccelerationStructureMemoryKHR vkBindAccelerationStructureMemoryKHR;
-		PFN_vkGetAccelerationStructureMemoryRequirementsKHR vkGetAccelerationStructureMemoryRequirementsKHR;
-		PFN_vkCmdBuildAccelerationStructureKHR vkCmdBuildAccelerationStructureKHR;
-		PFN_vkCreateRayTracingPipelinesKHR vkCreateRayTracingPipelinesKHR;
-		PFN_vkGetRayTracingShaderGroupHandlesKHR vkGetRayTracingShaderGroupHandlesKHR;
-		PFN_vkCmdTraceRaysKHR vkCmdTraceRaysKHR;
-
-		template<typename T>
-		void setFunctionPointer(T &pointer, const char *name) 
-		{ 
-			pointer = reinterpret_cast<T>(vkGetDeviceProcAddr(vkut::device, name));
-		}
-#define VK_SET_FUNC_PTR(func) (setFunctionPointer(func, #func))
 
 		void initRaytracingFunctions()
 		{
@@ -1217,6 +1340,7 @@ namespace vkut {
 			VK_SET_FUNC_PTR(vkCreateRayTracingPipelinesKHR);
 			VK_SET_FUNC_PTR(vkGetRayTracingShaderGroupHandlesKHR);
 			VK_SET_FUNC_PTR(vkCmdTraceRaysKHR);
+			VK_SET_FUNC_PTR(vkGetAccelerationStructureDeviceAddressKHR);
 
 		}
 
@@ -1229,43 +1353,493 @@ namespace vkut {
 			vkGetPhysicalDeviceProperties2(vkut::physicalDevice, &deviceProps2);
 		}
 
-		VkAccelerationStructureKHR createAccelerationStructure()
+		VkMemoryRequirements getAccelerationStructureMemoryRequirements(VkAccelerationStructureKHR acceleration, VkAccelerationStructureMemoryRequirementsTypeKHR type)
 		{
-			VkAccelerationStructureCreateInfoKHR info;
+			VkMemoryRequirements2 memoryRequirements2;
+			memoryRequirements2.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2;
+			memoryRequirements2.pNext = nullptr;
+
+			VkAccelerationStructureMemoryRequirementsInfoKHR accelerationMemoryRequirements
+			{
+				accelerationMemoryRequirements.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_INFO_KHR,
+				accelerationMemoryRequirements.pNext = nullptr,
+				accelerationMemoryRequirements.type = type,
+				accelerationMemoryRequirements.buildType = VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+				accelerationMemoryRequirements.accelerationStructure = acceleration,
+			};
+
+			vkGetAccelerationStructureMemoryRequirementsKHR(device, &accelerationMemoryRequirements, &memoryRequirements2);
+
+			return memoryRequirements2.memoryRequirements;
+		}
+
+		MappedBuffer createAccelerationScratchBuffer(VkAccelerationStructureKHR acceleration, VkAccelerationStructureMemoryRequirementsTypeKHR type)
+		{
+			VkMemoryRequirements asRequirements = getAccelerationStructureMemoryRequirements(acceleration, type);
+
+			VkMemoryAllocateFlagsInfo memAllocFlagsInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO,
+				.pNext = nullptr,
+				.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR,
+				.deviceMask = 0
+			};
+
+			Buffer BLASbuffer = vkut::common::createBuffer(
+				asRequirements.size, 
+				VK_BUFFER_USAGE_RAY_TRACING_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				memAllocFlagsInfo);
+
+			MappedBuffer mappedBuffer
+			{
+				.buffer = BLASbuffer.buffer,
+				.memory = BLASbuffer.memory,
+			};
+
+			mappedBuffer.memoryAddress = GetBufferAddress(mappedBuffer.buffer);
 			
-			VkAccelerationStructureKHR accelerationCreature;
-			vkCreateAccelerationStructureKHR(vkut::device, &info, nullptr, &accelerationCreature);
-			return accelerationCreature;
+			return mappedBuffer;
 		}
 
-		void destroyAccelerationStructure(VkAccelerationStructureKHR accelerationStructure)
+		template<typename T>
+		MappedBuffer createMappedBuffer(const std::vector<T> &data) {
+			
+			uint32_t byteLength = static_cast<uint32_t>( data.size() * sizeof(T));
+
+			VkMemoryAllocateFlagsInfo memAllocFlagsInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO,
+				.pNext = nullptr,
+				.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR,
+				.deviceMask = 0
+			};
+
+			Buffer buffer = vkut::common::createBuffer(
+				byteLength,
+				VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+				memAllocFlagsInfo);
+
+
+			MappedBuffer mappedBuffer
+			{
+				.buffer = buffer.buffer,
+				.memory = buffer.memory
+			};
+
+			mappedBuffer.memoryAddress = GetBufferAddress(mappedBuffer.buffer);
+
+			void *dstData;
+			VK_CHECK(vkMapMemory(vkut::device, mappedBuffer.memory, 0, byteLength, 0, &dstData));
+
+			memcpy(dstData, (void *)data.data(), byteLength);
+			
+			vkUnmapMemory(device, mappedBuffer.memory);
+			mappedBuffer.mappedPointer = dstData;
+
+			return mappedBuffer;
+		}
+		
+		void destroyMappedBuffer(MappedBuffer mappedBuffer)
 		{
-			vkDestroyAccelerationStructureKHR(vkut::device, accelerationStructure, nullptr);
+			vkut::common::destroyBuffer({ mappedBuffer.buffer, mappedBuffer.memory });
 		}
 
-		VkPipeline createPipeline(VkPipelineLayout layout)
+		void BindAccelerationMemory(VkAccelerationStructureKHR acceleration, VkDeviceMemory memory)
+		{
+			VkBindAccelerationStructureMemoryInfoKHR accelerationMemoryBindInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_BIND_ACCELERATION_STRUCTURE_MEMORY_INFO_KHR,
+				.pNext = nullptr,
+				.accelerationStructure = acceleration,
+				.memory = memory,
+				.memoryOffset = 0,
+				.deviceIndexCount = 0,
+				.pDeviceIndices = nullptr,
+			};
+
+			VK_CHECK(vkBindAccelerationStructureMemoryKHR(device, 1, &accelerationMemoryBindInfo));
+		}
+
+		VkAccelerationStructureKHR createAccelerationStructure(VkAccelerationStructureCreateGeometryTypeInfoKHR geometryTypeInfo, VkAccelerationStructureTypeKHR type)
+		{
+			VkAccelerationStructureCreateInfoKHR accelerationInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
+				.pNext = nullptr,
+				.compactedSize = 0,
+				.type = type,
+				.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
+				.maxGeometryCount = 1,
+				.pGeometryInfos = &geometryTypeInfo,
+				.deviceAddress = VK_NULL_HANDLE,
+			};
+
+			VkAccelerationStructureKHR accelerationStructure = {};
+			
+			VK_CHECK(vkCreateAccelerationStructureKHR(device, &accelerationInfo, nullptr, &accelerationStructure));
+			Logger::logMessageFormatted("Created acceleration structure %u! ", accelerationStructure);
+			
+			return accelerationStructure;
+		}
+
+		BottomLevelAccelerationStructure createBLAS(VkCommandPool commandPool, const std::vector<float> &vertices, const std::vector<uint32_t> &indices)
+		{
+			VkAccelerationStructureKHR accelerationStructure = {};
+			MappedBuffer accelerationMappedBuffer = {};
+			uint64_t address = {};
+			
+			VkAccelerationStructureCreateGeometryTypeInfoKHR accelerationCreateGeometryInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_GEOMETRY_TYPE_INFO_KHR,
+				.pNext = nullptr,
+				.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
+				.maxPrimitiveCount = static_cast<uint32_t>(indices.size() / 3),
+				.indexType = VK_INDEX_TYPE_UINT32,
+				.maxVertexCount = static_cast<uint32_t>(vertices.size() / 3),
+				.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
+				.allowsTransforms = VK_FALSE,
+			};
+
+			accelerationStructure = createAccelerationStructure(
+				accelerationCreateGeometryInfo,
+				VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
+
+			MappedBuffer objectMemory = createAccelerationScratchBuffer(
+				accelerationStructure, 
+				VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_OBJECT_KHR);
+
+			BindAccelerationMemory(accelerationStructure, objectMemory.memory);
+
+			MappedBuffer buildScratchMemory = createAccelerationScratchBuffer(
+				accelerationStructure, 
+				VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_KHR);
+
+			// Get bottom level acceleration structure handle for use in top level instances
+			VkAccelerationStructureDeviceAddressInfoKHR devAddrInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR,
+				.pNext = nullptr,
+				.accelerationStructure = accelerationStructure,
+			};
+			address = vkGetAccelerationStructureDeviceAddressKHR(device, &devAddrInfo);
+			
+			MappedBuffer vertexBuffer = createMappedBuffer(vertices);
+
+			MappedBuffer indexBuffer = createMappedBuffer(indices);
+
+			VkAccelerationStructureGeometryKHR accelerationGeometry
+			{
+				.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
+				.pNext = nullptr,
+				.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
+				.geometry
+				{
+					.triangles
+					{
+						.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
+						.pNext = nullptr,
+						.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
+						.vertexData{ .deviceAddress = vertexBuffer.memoryAddress },
+						.vertexStride = 3 * sizeof(float),
+						.indexType = VK_INDEX_TYPE_UINT32,
+						.indexData{ .deviceAddress = indexBuffer.memoryAddress },
+						.transformData{ .deviceAddress = 0 },
+					}
+				},
+				.flags = VK_GEOMETRY_OPAQUE_BIT_KHR,
+			};
+
+			std::vector<VkAccelerationStructureGeometryKHR> accelerationGeometries( { accelerationGeometry });
+			const VkAccelerationStructureGeometryKHR *ppGeometries = accelerationGeometries.data();
+
+			VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
+				.pNext = nullptr,
+				.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
+				.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
+				.update = VK_FALSE,
+				.srcAccelerationStructure = VK_NULL_HANDLE,
+				.dstAccelerationStructure = accelerationStructure,
+				.geometryArrayOfPointers = VK_FALSE,
+				.geometryCount = 1,
+				.ppGeometries = &ppGeometries,
+				.scratchData{.deviceAddress = buildScratchMemory.memoryAddress },
+			};
+
+			VkAccelerationStructureBuildOffsetInfoKHR accelerationBuildOffsetInfo
+			{
+				.primitiveCount = 1,
+				.primitiveOffset = 0,
+				.firstVertex = 0,
+				.transformOffset = 0
+			};
+
+			std::vector<VkAccelerationStructureBuildOffsetInfoKHR *> accelerationBuildOffsets = { &accelerationBuildOffsetInfo };
+
+			VkCommandBuffer commandBuffer = vkut::initSingleTimeCommands(commandPool);
+
+			vkCmdBuildAccelerationStructureKHR(commandBuffer, 1, &accelerationBuildGeometryInfo, accelerationBuildOffsets.data());
+
+			vkut::submitSingleTimeCommands(commandPool, commandBuffer);
+
+			assert(address != 0);
+			BottomLevelAccelerationStructure result
+			{
+				.mappedBuffer = accelerationMappedBuffer,
+				.accelerationStructure = accelerationStructure,
+				.address = address,
+				.indexBuffer = indexBuffer,
+				.vertexBuffer = vertexBuffer
+			};
+
+			destroyMappedBuffer(objectMemory);
+			destroyMappedBuffer(buildScratchMemory);
+
+			Logger::logMessageFormatted("Created bottom level acceleration structure %u! ", accelerationStructure);
+
+			return result;
+		}
+
+		void destroyBottomLevelAccelerationStructure(BottomLevelAccelerationStructure blas)
+		{
+			destroyMappedBuffer(blas.mappedBuffer);
+			destroyMappedBuffer(blas.indexBuffer);
+			destroyMappedBuffer(blas.vertexBuffer);
+
+			vkDestroyAccelerationStructureKHR(vkut::device, blas.accelerationStructure, nullptr);
+			Logger::logMessageFormatted("Destroyed bottom level acceleration structure %u! ", blas.accelerationStructure);
+		}
+
+		TopLevelAccelerationStructure createTLAS(VkCommandPool commandPool, const std::vector<VkAccelerationStructureInstanceKHR> &instances)
+		{
+			VkAccelerationStructureKHR accelerationStructure = {};
+
+			VkAccelerationStructureCreateGeometryTypeInfoKHR accelerationCreateGeometryInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_GEOMETRY_TYPE_INFO_KHR,
+				.pNext = nullptr,
+				.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR,
+				.maxPrimitiveCount = static_cast<uint32_t>(instances.size()),
+				.indexType = VK_INDEX_TYPE_NONE_KHR,
+				.maxVertexCount = 0,
+				.vertexFormat = VK_FORMAT_UNDEFINED,
+				.allowsTransforms = VK_FALSE
+			};
+
+			accelerationStructure = createAccelerationStructure(accelerationCreateGeometryInfo, VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR);
+
+			MappedBuffer objectMemory = createAccelerationScratchBuffer(
+				accelerationStructure, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_OBJECT_KHR);
+
+			BindAccelerationMemory(accelerationStructure, objectMemory.memory);
+
+			MappedBuffer buildScratchMemory = createAccelerationScratchBuffer(
+				accelerationStructure, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_KHR);
+
+			MappedBuffer instanceBuffer = createMappedBuffer(instances);
+
+			VkAccelerationStructureGeometryKHR accelerationGeometry
+			{
+				.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
+				.pNext = nullptr,
+				.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR,
+				.geometry
+				{
+					.instances
+					{
+						.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR,
+						.pNext = nullptr,
+						.arrayOfPointers = VK_FALSE,
+						.data{ .deviceAddress = instanceBuffer.memoryAddress }
+					}
+				},
+				.flags = VK_GEOMETRY_OPAQUE_BIT_KHR,
+			};
+
+			std::vector<VkAccelerationStructureGeometryKHR> accelerationGeometries({ accelerationGeometry });
+			const VkAccelerationStructureGeometryKHR *ppGeometries = accelerationGeometries.data();
+
+			VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
+				.pNext = nullptr,
+				.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
+				.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
+				.update = VK_FALSE,
+				.srcAccelerationStructure = VK_NULL_HANDLE,
+				.dstAccelerationStructure = accelerationStructure,
+				.geometryArrayOfPointers = VK_FALSE,
+				.geometryCount = 1,
+				.ppGeometries = &ppGeometries,
+				.scratchData { .deviceAddress = buildScratchMemory.memoryAddress }
+			};
+
+			VkAccelerationStructureBuildOffsetInfoKHR accelerationBuildOffsetInfo
+			{
+				.primitiveCount = 1,
+				.primitiveOffset = 0x0,
+				.firstVertex = 0,
+				.transformOffset = 0x0
+			};
+
+			std::vector<VkAccelerationStructureBuildOffsetInfoKHR *> accelerationBuildOffsets = { &accelerationBuildOffsetInfo };
+
+			VkCommandBuffer commandBuffer = initSingleTimeCommands(commandPool);
+
+			vkCmdBuildAccelerationStructureKHR(commandBuffer, 1, &accelerationBuildGeometryInfo,
+				accelerationBuildOffsets.data());
+
+			submitSingleTimeCommands(commandPool, commandBuffer);
+
+			destroyMappedBuffer(buildScratchMemory);
+			destroyMappedBuffer(objectMemory);
+
+			Logger::logMessageFormatted("Created top level acceleration structure %u! ", accelerationStructure);
+
+			return TopLevelAccelerationStructure
+			{
+				.instanceBuffer = instanceBuffer,
+				.accelerationStructure = accelerationStructure
+			};
+		}
+
+		void destroyTopLevelAccelerationStructure(TopLevelAccelerationStructure tlas)
+		{
+			destroyMappedBuffer(tlas.instanceBuffer);
+			vkDestroyAccelerationStructureKHR(vkut::device, tlas.accelerationStructure, nullptr);
+
+			Logger::logMessageFormatted("Destroyed top level acceleration structure %u! ", tlas.accelerationStructure);
+		}
+
+		VkPipeline createPipeline(VkPipelineLayout layout, const std::vector<VkPipelineShaderStageCreateInfo> &stages, const std::vector<VkRayTracingShaderGroupCreateInfoKHR> &groups)
 		{
 			VkPipeline pipeline = {};
-			VkRayTracingPipelineCreateInfoKHR info;
-			VkGraphicsPipelineCreateInfo pipelineInfo = {};
-			//todo: actually fill this in with stuff
-			info.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;
-			info.stageCount = 0;
-			info.pStages = nullptr;
-			info.layout = layout;
-			info.basePipelineHandle = VK_NULL_HANDLE; // Optional
-			info.basePipelineIndex = -1; // Optional
-			info.flags = 0;
-			info.groupCount = 0;
-			info.pGroups = 0;
-			info.libraries = {};
-			info.maxRecursionDepth = 10;
-			info.pLibraryInterface = 0;
+			VkRayTracingPipelineCreateInfoKHR info
+			{
+				.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR,
+				.pNext = nullptr,
+				.flags = 0,
+				.stageCount = static_cast<uint32_t>(stages.size()),
+				.pStages = stages.data(),
+				.groupCount = static_cast<uint32_t>(groups.size()),
+				.pGroups = groups.data(),
+				.maxRecursionDepth = physicalDeviceRaytracingProperties.maxRecursionDepth,
+				.libraries = VK_STRUCTURE_TYPE_PIPELINE_LIBRARY_CREATE_INFO_KHR,
+				.pLibraryInterface = 0,
+				.layout = layout,
+				.basePipelineHandle = VK_NULL_HANDLE, // Optional
+				.basePipelineIndex = -1, // Optional
+			};
 
 			VK_CHECK(vkCreateRayTracingPipelinesKHR(vkut::device, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline));
-			Logger::LogMessageFormatted("Created raytracing pipeline %u!\n", pipeline);
+			Logger::logMessageFormatted("Created raytracing pipeline %u! ", pipeline);
 
 			return pipeline;
+		}
+
+		VkRayTracingShaderGroupCreateInfoKHR getShaderGroupCreateInfo(ShaderGroupType groupType, uint32_t index)
+		{
+			VkRayTracingShaderGroupCreateInfoKHR info = {};
+
+			switch (groupType)
+			{
+			case vkut::raytracing::ShaderGroupType::RAY_GENERATION:
+
+				info = VkRayTracingShaderGroupCreateInfoKHR
+				{
+					.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
+					.generalShader = index,
+					.closestHitShader = VK_SHADER_UNUSED_KHR,
+				};
+
+				break;
+			case vkut::raytracing::ShaderGroupType::CLOSEST_HIT:
+
+				info = VkRayTracingShaderGroupCreateInfoKHR
+				{
+					.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR,
+					.generalShader = VK_SHADER_UNUSED_KHR,
+					.closestHitShader = index,
+				};
+
+				break;
+			case vkut::raytracing::ShaderGroupType::MISS:
+
+				info = VkRayTracingShaderGroupCreateInfoKHR
+				{
+					.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
+					.generalShader = index,
+					.closestHitShader = VK_SHADER_UNUSED_KHR,
+				};
+
+				break;
+			default:
+				assert(false);
+				break;
+			}
+
+			info.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+			info.intersectionShader = VK_SHADER_UNUSED_KHR;
+			info.anyHitShader = VK_SHADER_UNUSED_KHR;
+
+			return info;
+		}
+
+		VkPipelineShaderStageCreateInfo getShaderStageCreateInfo(VkShaderModule shaderModule, VkShaderStageFlagBits stage)
+		{
+			VkPipelineShaderStageCreateInfo info =
+			{
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+				.pNext = nullptr,
+				.flags = 0,
+				.stage = stage,
+				.module = shaderModule,
+				.pName = "main",
+				.pSpecializationInfo = nullptr,
+			};
+
+			return info;
+		}
+
+		ShaderBindingTable createShaderBindingTable(VkCommandPool commandPool, VkPipeline pipeline, std::vector<uint32_t> handles)
+		{
+			uint32_t groupCount = static_cast<uint32_t>(handles.size());
+			uint32_t groupHandleSize = physicalDeviceRaytracingProperties.shaderGroupHandleSize;
+
+			uint32_t bindingTableSize = groupCount * groupHandleSize;
+			std::vector<char> shaderHandleStorage(bindingTableSize);
+			vkGetRayTracingShaderGroupHandlesKHR(device, pipeline, 0, groupCount, bindingTableSize, shaderHandleStorage.data());
+
+			Buffer stagingBuffer = vkut::common::createBuffer(bindingTableSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+			void *data;
+			vkMapMemory(device, stagingBuffer.memory, 0, bindingTableSize, 0, &data);
+			memcpy(data, shaderHandleStorage.data(), shaderHandleStorage.size());
+			vkUnmapMemory(device, stagingBuffer.memory);
+
+			ShaderBindingTable table = vkut::common::createBuffer(bindingTableSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_RAY_TRACING_BIT_KHR, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+			
+			VkCommandBuffer commandBuffer = vkut::initSingleTimeCommands(commandPool);
+			VkBufferCopy copyRegion
+			{
+				.size = bindingTableSize
+			};
+
+			vkCmdCopyBuffer(commandBuffer, stagingBuffer.buffer, table.buffer, 1, &copyRegion);
+			
+			vkut::submitSingleTimeCommands(commandPool, commandBuffer);
+
+			vkut::common::destroyBuffer(stagingBuffer);
+
+			return table;
+		}
+		
+		void destroyShaderBindingTable(ShaderBindingTable table)
+		{
+			vkut::common::destroyBuffer(table);
 		}
 
 	}

@@ -5,14 +5,32 @@ class Logger
 {
 public:
 
-	static void LogMessage(const char *message);
-	static void LogMessageFormatted(const char *format, ...);
-	static void LogMessage(const char *message, int line, const char *file);
-	static void LogError(const char *error);
-	static void LogErrorFormatted(const char *format, ...);
-	static void LogError(const char *error, int line, const char *file);
+	enum Verbosity : unsigned char
+	{
+		ERROR= 1,
+		WARNING = 2,
+		MESSAGE = 3,
+		TRIVIAL = 4
+	};
+
+	static void setVerbosity(Verbosity verbosity);
+
+	static void logMessage(const char *message);
+	static void logMessageFormatted(const char *format, ...);
+	
+	static void logError(const char *error);
+	static void logErrorFormatted(const char *format, ...);
+
+	static void logWarning(const char *message);
+	static void logWarningFormatted(const char *format, ...);
+
+	static void logTrivial(const char *message);
+	static void logTrivialFormatted(const char *format, ...);
 
 private:
+
+	static Verbosity verbosity;
+
 	Logger() = default;
 };
 

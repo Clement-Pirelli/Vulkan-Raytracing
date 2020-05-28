@@ -1,6 +1,8 @@
 #pragma once
+#ifndef RENDER_DOC_H_DEFINED
+#define RENDER_DOC_H_DEFINED
 
-struct RENDERDOC_API_1_4_0;
+struct RENDERDOC_API_1_4_1;
 
 
 class RenderDoc
@@ -17,6 +19,7 @@ private:
 	void stopCaptureInternal();
 
 	bool initDone = false;
-	RENDERDOC_API_1_4_0 *api = nullptr;
+	RENDERDOC_API_1_4_1 *api = nullptr;
 };
 
+#endif

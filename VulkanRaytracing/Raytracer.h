@@ -24,9 +24,9 @@ private:
 		VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME
 	};
 	const std::vector<float> vertices = {
-		0.25f, 0.25f, 0.0f,
-		0.75f, 0.25f, 0.0f,
-		0.50f, 0.75f, 0.0f
+		.5f, -.25f, 10.0f,
+		-.25f, -.25f, 10.0f,
+		0.0f, .25f, 10.0f
 	};
 	const std::vector<uint32_t> indices = { 0, 1, 2 };
 	static constexpr size_t maxFramesInFlight = 2;
@@ -43,6 +43,22 @@ private:
 	VkImageView depthView = {};
 	std::vector<VkFramebuffer> framebuffers = {};
 	std::vector<VkCommandBuffer> commandBuffers = {};
+	vkut::raytracing::BottomLevelAccelerationStructure blas = {};
+	vkut::raytracing::TopLevelAccelerationStructure tlas = {};
+	VkDescriptorSetLayout descriptorSetLayout = {};
+	VkDescriptorPool descriptorPool = {};
+	std::vector<VkDescriptorSet> descriptorSets = {};
+	std::vector<VkDescriptorType> descriptorTypes = {};
+	VkPipelineLayout pipelineLayout = {};
+	VkPipeline pipeline = {};
+	vkut::raytracing::ShaderBindingTable shaderBindingTable = {};
+
+	const uint32_t raygenShaderIndex = 0U;
+	const uint32_t missShaderIndex = 1U;
+	const uint32_t closestHitShaderIndex = 2U;
+
+	void init();
+	void cleanup();
 
 	void createDepthResources();
 	void createFramebuffers();
@@ -50,6 +66,12 @@ private:
 	void recreateSwapchainDependents();
 
 	void recordCommandBuffers();
+
+	void createAccelerationStructures();
+	std::vector<VkDescriptorType> createDescriptorSetLayout();
+	void createDescriptorSets();
+	void createRenderPass();
+	void createPipeline();
 
 	void drawFrame();
 
