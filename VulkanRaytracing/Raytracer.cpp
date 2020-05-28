@@ -2,9 +2,6 @@
 #include <assert.h>
 #include "Logger/Logger.h"
 #include "Files.h"
-#include "RenderDocApi/RenderDoc.h"
-
-RenderDoc renderDoc = {};
 
 
 namespace {

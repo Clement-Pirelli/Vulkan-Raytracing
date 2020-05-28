@@ -30,9 +30,6 @@
     <ClCompile Include="Raytracer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Dependencies\custom\RenderDocApi\RenderDoc.cpp">
-      <Filter>Resource Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="vkutils.h">
@@ -45,9 +42,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Files.h">
-      <Filter>Resource Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Dependencies\custom\RenderDocApi\RenderDoc.h">
       <Filter>Resource Files</Filter>
     </ClInclude>
   </ItemGroup>
