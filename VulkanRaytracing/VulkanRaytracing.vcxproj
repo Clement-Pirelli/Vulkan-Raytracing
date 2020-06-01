@@ -210,9 +210,9 @@ for %%i in (*.vert *.frag *.comp, *.rchit *.rmiss *.rgen *rahit) do "glslangVali
     <ClInclude Include="vkutils.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Assets\shaders\anyHit.glsl" />
-    <None Include="Assets\shaders\closestHit.glsl" />
-    <None Include="Assets\shaders\miss.glsl" />
+    <None Include="..\Assets\shaders\raytrace.rchit" />
+    <None Include="..\Assets\shaders\raytrace.rgen" />
+    <None Include="..\Assets\shaders\raytrace.rmiss" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -5,11 +5,15 @@ layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
 layout(location = 0) rayPayloadEXT vec3 payload;
 layout(binding = 1, set = 0, rgba32f) uniform image2D image;
 
-vec3 computeDir(uvec3 launchID, uvec3 launchSize) {
+vec2 getUV(uvec3 launchID, uvec3 launchSize) {
 	const vec2 pixelCenter = vec2(launchID.xy) + vec2(0.5);
-	const vec2 inUV = pixelCenter/launchSize.xy;
+	return pixelCenter/launchSize.xy;
+}
+
+vec3 computeDir(uvec3 launchID, uvec3 launchSize) {
+	const vec2 inUV = getUV(launchID, launchSize);
 	
-	return normalize(vec3(inUV.x, inUV.y, 1.0));
+	return normalize(vec3(inUV.x, inUV.y, -1.0));
 }
 
 
@@ -22,13 +26,13 @@ void main()
 		0xff, 					//cullFlags
 		0, 						//sbtRecordOffset
 		0, 						//sbtRecordStride
-		1, 						//missIndex
-		vec3(.0,.0,.0), 		//origin 
-		.0, 					//tMin
+		0, 						//missIndex
+		vec3(.0,.0,-1.0),		//origin 
+		.0001, 					//tMin
 		computeDir(gl_LaunchIDEXT, gl_LaunchSizeEXT), //direction
-		100.0, 					//tMax
+		10000.0, 				//tMax
 		0 						//payload
 		);
-       imgColor = vec4(payload.xyz, 1.0);
+       imgColor = vec4(payload, 1.0);
        imageStore(image, ivec2(gl_LaunchIDEXT), imgColor);
 }

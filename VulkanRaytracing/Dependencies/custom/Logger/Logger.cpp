@@ -3,7 +3,7 @@
 #include <cstdarg>
 
 #ifdef NDEBUG
-Logger::Verbosity Logger::verbosity = Logger::Verbosity::WARNINGS
+Logger::Verbosity Logger::verbosity = Logger::Verbosity::WARNING;
 #else
 Logger::Verbosity Logger::verbosity = Logger::Verbosity::TRIVIAL;
 #endif
@@ -18,7 +18,7 @@ va_list list;							\
 va_start(list, format);					\
 vprintf(format, list);					\
 va_end(list);							\
-std::cout << '\n';						\
+std::cout << '\n';
 
 
 void Logger::setVerbosity(Verbosity givenVerbosity)

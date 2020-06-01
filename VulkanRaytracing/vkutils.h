@@ -114,7 +114,7 @@ namespace vkut {
 		void destroyDescriptorSetLayout(VkDescriptorSetLayout descriptorSetLayout);
 
 		[[nodiscard]]
-		VkDescriptorPool createDescriptorPool(const std::vector<VkDescriptorType> &descriptorTypes);
+		VkDescriptorPool createDescriptorPool(const std::vector<VkDescriptorType> &descriptorTypes, uint32_t maxDescriptorCount, uint32_t maxSets);
 
 		//implicitly destroys all descriptor sets created from this pool
 		void destroyDescriptorPool(VkDescriptorPool descriptorPool);
@@ -125,6 +125,8 @@ namespace vkut {
 		[[nodiscard]]
 		Buffer createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags propertyFlags, VkMemoryAllocateFlagsInfo flagsInfo = {});
 		void destroyBuffer(const Buffer &buffer);
+
+		
 
 		[[nodiscard]]
 		VkShaderModule createShaderModule(const char *path);

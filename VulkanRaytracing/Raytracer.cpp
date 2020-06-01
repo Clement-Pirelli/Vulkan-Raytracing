@@ -51,16 +51,6 @@ void Raytracer::recreateSwapchainDependents()
 	//destruction
 	vkut::common::destroyCommandBuffers(commandPool, commandBuffers);
 
-	for (size_t i = 0; i < framebuffers.size(); i++)
-	{
-		vkut::setup::destroyFramebuffer(framebuffers[i]);
-	}
-
-	vkut::common::destroyImageView(depthView);
-	vkut::common::destroyImage(depthImage);
-	
-	vkut::common::destroyRenderPass(renderPass);
-
 	vkut::common::destroyDescriptorPool(descriptorPool);
 
 	vkut::setup::destroySwapchainImageViews();
@@ -72,40 +62,35 @@ void Raytracer::recreateSwapchainDependents()
 	vkut::setup::createSwapChain(width, height, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
 	vkut::setup::createSwapchainImageViews();
 
-	descriptorPool = vkut::common::createDescriptorPool(descriptorTypes);
+	VkImageSubresourceRange subresourceRange
+	{
+		.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+		.baseMipLevel = 0,
+		.levelCount = 1,
+		.baseArrayLayer = 0,
+		.layerCount = 1
+	};
+
+	for (size_t i = 0; i < vkut::swapChainImages.size(); i++)
+	{
+		vkut::common::transitionImageLayout(commandPool,
+			vkut::swapChainImages[i],
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+			subresourceRange,
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+			VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+	}
+
+	createDescriptorPool();
 	createDescriptorSets();
 	
-	createRenderPass();
-	
-	createDepthResources();
-	
-	createFramebuffers();
-	
-	commandBuffers = vkut::common::createCommandBuffers(commandPool, framebuffers.size());
+	commandBuffers = vkut::common::createCommandBuffers(commandPool, vkut::swapChainImages.size());
 	recordCommandBuffers();
 }
 
 void Raytracer::recordCommandBuffers()
 {
-
-	constexpr uint32_t clearValuesCount = 2;
-	VkClearValue clearValues[clearValuesCount] = {};
-	clearValues[0].color = { 1.0f, 1.0f, .0f, 1.0f };
-	clearValues[1].depthStencil = { 1.0f, 0 };
-
-	VkRenderPassBeginInfo renderPassInfo
-	{
-		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-		.renderPass = renderPass,
-		.renderArea 
-		{
-			.offset = { 0, 0 },
-			.extent = vkut::swapChainExtent,
-		},
-		.clearValueCount = static_cast<uint32_t>(clearValuesCount),
-		.pClearValues = clearValues,
-	};
-
 	VkImageSubresourceRange subresourceRange
 	{
 		.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, 
@@ -116,8 +101,6 @@ void Raytracer::recordCommandBuffers()
 	};
 
 	for (size_t i = 0; i < commandBuffers.size(); i++) {
-
-		renderPassInfo.framebuffer = framebuffers[i];		
 		vkut::common::startRecordCommandBuffer(commandBuffers[i]);
 
 		vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline);
@@ -167,7 +150,7 @@ void Raytracer::recordCommandBuffers()
 			.buffer = shaderBindingTable.buffer,
 			.offset = 0,
 			.stride = 0,
-			.size = 0
+			.size = shaderBindingTable.size
 		};
 
 		vkut::raytracing::vkCmdTraceRaysKHR(
@@ -245,6 +228,13 @@ std::vector<VkDescriptorType> Raytracer::createDescriptorSetLayout()
 	return types;
 }
 
+void Raytracer::createDescriptorPool()
+{
+	uint32_t maxSets = static_cast<uint32_t>(vkut::swapChainImages.size());
+	uint32_t descriptorCount = maxSets;
+	descriptorPool = vkut::common::createDescriptorPool(descriptorTypes, descriptorCount, maxSets);
+}
+
 void Raytracer::createDescriptorSets()
 {
 	VkWriteDescriptorSetAccelerationStructureKHR descriptorAccelerationStructureInfo
@@ -297,13 +287,6 @@ void Raytracer::createDescriptorSets()
 		descriptorSets[i] = vkut::common::createDescriptorSet(descriptorSetLayout, descriptorPool, descriptorSetInfos);
 
 	}
-}
-
-void Raytracer::createRenderPass()
-{
-	std::vector<VkAttachmentDescription> colorDescriptions = getColorAttachmentDescriptions();
-	VkAttachmentDescription depthDescription = getDepthAttachmentDescription();
-	renderPass = vkut::common::createRenderPass(colorDescriptions, Optional<VkAttachmentDescription>(depthDescription));
 }
 
 void Raytracer::createPipeline()
@@ -409,67 +392,6 @@ void Raytracer::framebufferResizeCallback(GLFWwindow *window, int width, int hei
 	raytracer->windowResized = true;
 }
 
-void Raytracer::createDepthResources()
-{
-	VkImageCreateInfo depthImageCreateInfo
-	{
-		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-		.imageType = VK_IMAGE_TYPE_2D,
-		.format = vkut::common::findDepthFormat(),
-		.extent = {
-			.width = static_cast<uint32_t>(width),
-			.height = static_cast<uint32_t>(height),
-			.depth = 1,
-		},
-		.mipLevels = 1,
-		.arrayLayers = 1,
-		.samples = VK_SAMPLE_COUNT_1_BIT,
-		.tiling = VK_IMAGE_TILING_OPTIMAL,
-		.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-	};
-
-	constexpr VkMemoryPropertyFlags flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-	depthImage = vkut::common::createImage(depthImageCreateInfo, flags);
-	depthView = vkut::common::createImageView(depthImage.image, depthImageCreateInfo.format, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
-
-	VkImageSubresourceRange subresourceRange
-	{
-		.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-		.baseMipLevel = 0,
-		.levelCount = 1,
-		.baseArrayLayer = 0,
-		.layerCount = 1
-	};
-
-	vkut::common::transitionImageLayout(
-		commandPool,
-		depthImage.image,
-		VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-		subresourceRange,
-		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-		VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT
-	);
-}
-
-void Raytracer::createFramebuffers()
-{
-	framebuffers.resize(vkut::swapChainImages.size());
-	for (size_t i = 0; i < framebuffers.size(); i++)
-	{
-		std::vector<VkImageView> colorViews = { vkut::swapChainImageViews[i] };
-		framebuffers[i] = vkut::setup::createRenderPassFramebuffer(
-			renderPass,
-			vkut::swapChainExtent.width,
-			vkut::swapChainExtent.height,
-			colorViews,
-			Optional<VkImageView>(depthView)
-		);
-	}
-}
-
 void Raytracer::init()
 {
 	window = vkut::setup::createWindow(title, width, height);
@@ -494,8 +416,6 @@ void Raytracer::init()
 	vkut::setup::createSwapChain(width, height, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
 	vkut::setup::createSwapchainImageViews();
 
-	createRenderPass();
-
 	commandPool = vkut::setup::createGraphicsCommandPool();
 	VkImageSubresourceRange subresourceRange
 	{
@@ -508,7 +428,8 @@ void Raytracer::init()
 
 	for (size_t i = 0; i < vkut::swapChainImages.size(); i++) 
 	{
-		vkut::common::transitionImageLayout(commandPool, vkut::swapChainImages[i],
+		vkut::common::transitionImageLayout(commandPool, 
+			vkut::swapChainImages[i],
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
 			subresourceRange,
@@ -516,8 +437,6 @@ void Raytracer::init()
 			VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
 	}
 
-	createDepthResources();
-	createFramebuffers();
 	vkut::setup::createSyncObjects(maxFramesInFlight);
 	
 	createAccelerationStructures();
@@ -526,7 +445,7 @@ void Raytracer::init()
 
 	pipelineLayout = vkut::common::createPipelineLayout({ descriptorSetLayout });
 
-	descriptorPool = vkut::common::createDescriptorPool(descriptorTypes);
+	descriptorPool = vkut::common::createDescriptorPool(descriptorTypes, static_cast<uint32_t>(vkut::swapChainImages.size()), static_cast<uint32_t>(vkut::swapChainImages.size()));
 	
 	createDescriptorSets();
 
@@ -534,7 +453,7 @@ void Raytracer::init()
 
 	shaderBindingTable = vkut::raytracing::createShaderBindingTable(commandPool, pipeline, {  raygenShaderIndex, missShaderIndex, closestHitShaderIndex });
 
-	commandBuffers = vkut::common::createCommandBuffers(commandPool, framebuffers.size());
+	commandBuffers = vkut::common::createCommandBuffers(commandPool, vkut::swapChainImages.size());
 	recordCommandBuffers();
 }
 
@@ -572,15 +491,8 @@ void Raytracer::cleanup()
 	vkut::raytracing::destroyBottomLevelAccelerationStructure(blas);
 
 	vkut::setup::destroySyncObjects();
-	for (size_t i = 0; i < framebuffers.size(); i++)
-	{
-		vkut::setup::destroyFramebuffer(framebuffers[i]);
-	}
 
-	vkut::common::destroyImageView(depthView);
-	vkut::common::destroyImage(depthImage);
 	vkut::setup::destroyCommandPool(commandPool);
-	vkut::common::destroyRenderPass(renderPass);
 	vkut::setup::destroySwapchainImageViews();
 	vkut::setup::destroySwapChain();
 	vkut::setup::destroyLogicalDevice();

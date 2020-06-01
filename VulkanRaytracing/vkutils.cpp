@@ -495,8 +495,7 @@ namespace vkut {
 			Logger::logTrivialFormatted("Freed buffer memory %u! ", buffer.memory);
 		}
 
-		//assumes one descriptor per swapchain image
-		VkDescriptorPool createDescriptorPool(const std::vector<VkDescriptorType> &descriptorTypes)
+		VkDescriptorPool createDescriptorPool(const std::vector<VkDescriptorType> &descriptorTypes, uint32_t descriptorCount, uint32_t maxSets)
 		{
 			std::vector<VkDescriptorPoolSize> poolSizes = std::vector<VkDescriptorPoolSize>(descriptorTypes.size());
 			for(size_t i = 0; i < poolSizes.size(); i++)
@@ -504,7 +503,7 @@ namespace vkut {
 				VkDescriptorPoolSize poolSize
 				{
 					.type = descriptorTypes[i],
-					.descriptorCount = static_cast<uint32_t>(swapChainImages.size())
+					.descriptorCount = descriptorCount
 				};
 				poolSizes[i] = poolSize;
 			}
@@ -512,7 +511,7 @@ namespace vkut {
 			VkDescriptorPoolCreateInfo poolInfo
 			{
 				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-				.maxSets = static_cast<uint32_t>(swapChainImages.size()),
+				.maxSets = maxSets,
 				.poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
 				.pPoolSizes = poolSizes.data(),
 			};
@@ -1432,9 +1431,7 @@ namespace vkut {
 
 			void *dstData;
 			VK_CHECK(vkMapMemory(vkut::device, mappedBuffer.memory, 0, byteLength, 0, &dstData));
-
 			memcpy(dstData, (void *)data.data(), byteLength);
-			
 			vkUnmapMemory(device, mappedBuffer.memory);
 			mappedBuffer.mappedPointer = dstData;
 

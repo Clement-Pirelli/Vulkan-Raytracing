@@ -23,10 +23,12 @@ private:
 		VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
 		VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME
 	};
+
+
 	const std::vector<float> vertices = {
-		.5f, -.25f, 10.0f,
-		-.25f, -.25f, 10.0f,
-		0.0f, .25f, 10.0f
+		.5f, .2f, .0f,
+		.2f, .8f, .0f,
+		.8f, .8f, .0f
 	};
 	const std::vector<uint32_t> indices = { 0, 1, 2 };
 	static constexpr size_t maxFramesInFlight = 2;
@@ -37,11 +39,7 @@ private:
 	int height = 768;
 	bool windowResized = false;
 
-	VkRenderPass renderPass = {};
 	VkCommandPool commandPool = {};
-	vkut::Image depthImage = {};
-	VkImageView depthView = {};
-	std::vector<VkFramebuffer> framebuffers = {};
 	std::vector<VkCommandBuffer> commandBuffers = {};
 	vkut::raytracing::BottomLevelAccelerationStructure blas = {};
 	vkut::raytracing::TopLevelAccelerationStructure tlas = {};
@@ -60,17 +58,14 @@ private:
 	void init();
 	void cleanup();
 
-	void createDepthResources();
-	void createFramebuffers();
-
 	void recreateSwapchainDependents();
 
 	void recordCommandBuffers();
 
 	void createAccelerationStructures();
 	std::vector<VkDescriptorType> createDescriptorSetLayout();
+	void createDescriptorPool();
 	void createDescriptorSets();
-	void createRenderPass();
 	void createPipeline();
 
 	void drawFrame();
