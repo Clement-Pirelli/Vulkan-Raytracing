@@ -126,6 +126,8 @@ namespace vkut {
 		Buffer createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags propertyFlags, VkMemoryAllocateFlagsInfo flagsInfo = {});
 		void destroyBuffer(const Buffer &buffer);
 
+		template<typename T> void copyToBuffer(const Buffer &buffer, const T &data);
+		template<typename T> void copyToBuffer(const Buffer &buffer, const std::vector<T> &data);
 		
 
 		[[nodiscard]]

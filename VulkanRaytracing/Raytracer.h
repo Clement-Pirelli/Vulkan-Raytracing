@@ -26,9 +26,9 @@ private:
 
 
 	const std::vector<float> vertices = {
-		.5f, .2f, .0f,
-		.2f, .8f, .0f,
-		.8f, .8f, .0f
+		1.0f, 1.0f, .0f,
+		-1.0f, 1.0f, .0f,
+		0.0f, -1.0f, .0f
 	};
 	const std::vector<uint32_t> indices = { 0, 1, 2 };
 	static constexpr size_t maxFramesInFlight = 2;

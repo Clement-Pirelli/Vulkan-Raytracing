@@ -495,6 +495,24 @@ namespace vkut {
 			Logger::logTrivialFormatted("Freed buffer memory %u! ", buffer.memory);
 		}
 
+		void copyToBuffer(const Buffer &buffer, void *data, size_t size)
+		{
+			void *mappedData;
+			vkMapMemory(device, buffer.memory, 0, size, 0, &mappedData);
+			memcpy(mappedData, data, size);
+			vkUnmapMemory(device, buffer.memory);
+		}
+
+		template<typename T> void copyToBuffer(const Buffer &buffer, const T &data) 
+		{
+			copyToBuffer(buffer, (void *)&data, sizeof(T));
+		}
+
+		template<typename T> void copyToBuffer(const Buffer &buffer, const std::vector<T> &data) 
+		{
+			copyToBuffer(buffer, (void *)data.data(), sizeof(T) * data.size());
+		}
+
 		VkDescriptorPool createDescriptorPool(const std::vector<VkDescriptorType> &descriptorTypes, uint32_t descriptorCount, uint32_t maxSets)
 		{
 			std::vector<VkDescriptorPoolSize> poolSizes = std::vector<VkDescriptorPoolSize>(descriptorTypes.size());
@@ -1542,7 +1560,7 @@ namespace vkut {
 						.vertexStride = 3 * sizeof(float),
 						.indexType = VK_INDEX_TYPE_UINT32,
 						.indexData{ .deviceAddress = indexBuffer.memoryAddress },
-						.transformData{ .deviceAddress = 0 },
+						.transformData{},
 					}
 				},
 				.flags = VK_GEOMETRY_OPAQUE_BIT_KHR,
@@ -1669,7 +1687,7 @@ namespace vkut {
 				.srcAccelerationStructure = VK_NULL_HANDLE,
 				.dstAccelerationStructure = accelerationStructure,
 				.geometryArrayOfPointers = VK_FALSE,
-				.geometryCount = 1,
+				.geometryCount = static_cast<uint32_t>(accelerationGeometries.size()),
 				.ppGeometries = &ppGeometries,
 				.scratchData { .deviceAddress = buildScratchMemory.memoryAddress }
 			};
@@ -1724,7 +1742,13 @@ namespace vkut {
 				.groupCount = static_cast<uint32_t>(groups.size()),
 				.pGroups = groups.data(),
 				.maxRecursionDepth = physicalDeviceRaytracingProperties.maxRecursionDepth,
-				.libraries = VK_STRUCTURE_TYPE_PIPELINE_LIBRARY_CREATE_INFO_KHR,
+				.libraries
+					{
+						.sType = VK_STRUCTURE_TYPE_PIPELINE_LIBRARY_CREATE_INFO_KHR,
+						.pNext = nullptr,
+						.libraryCount = 0,
+						.pLibraries = nullptr
+					},
 				.pLibraryInterface = 0,
 				.layout = layout,
 				.basePipelineHandle = VK_NULL_HANDLE, // Optional
@@ -1739,7 +1763,7 @@ namespace vkut {
 
 		VkRayTracingShaderGroupCreateInfoKHR getShaderGroupCreateInfo(ShaderGroupType groupType, uint32_t index)
 		{
-			VkRayTracingShaderGroupCreateInfoKHR info = {};
+			VkRayTracingShaderGroupCreateInfoKHR info{};
 
 			switch (groupType)
 			{
@@ -1807,17 +1831,25 @@ namespace vkut {
 			uint32_t groupHandleSize = physicalDeviceRaytracingProperties.shaderGroupHandleSize;
 
 			uint32_t bindingTableSize = groupCount * groupHandleSize;
-			std::vector<char> shaderHandleStorage(bindingTableSize);
-			vkGetRayTracingShaderGroupHandlesKHR(device, pipeline, 0, groupCount, bindingTableSize, shaderHandleStorage.data());
+			std::vector<uint8_t> shaderHandleStorage(bindingTableSize);
+			vkGetRayTracingShaderGroupHandlesKHR(device, pipeline, 0, groupCount, shaderHandleStorage.size(), shaderHandleStorage.data());
 
-			Buffer stagingBuffer = vkut::common::createBuffer(bindingTableSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+			Buffer stagingBuffer = vkut::common::createBuffer(
+				bindingTableSize, 
+				VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
 			void *data;
 			vkMapMemory(device, stagingBuffer.memory, 0, bindingTableSize, 0, &data);
-			memcpy(data, shaderHandleStorage.data(), shaderHandleStorage.size());
+
+			memcpy(data, shaderHandleStorage.data(), bindingTableSize);
+
 			vkUnmapMemory(device, stagingBuffer.memory);
 
-			ShaderBindingTable table = vkut::common::createBuffer(bindingTableSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_RAY_TRACING_BIT_KHR, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+			ShaderBindingTable table = vkut::common::createBuffer(
+				bindingTableSize, 
+				VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_RAY_TRACING_BIT_KHR, 
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 			
 			VkCommandBuffer commandBuffer = vkut::initSingleTimeCommands(commandPool);
 			VkBufferCopy copyRegion

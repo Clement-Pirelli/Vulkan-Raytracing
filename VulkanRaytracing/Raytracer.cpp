@@ -117,16 +117,17 @@ void Raytracer::recordCommandBuffers()
 		vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipelineLayout, 0, 1, &descriptorSets[i], 0, nullptr);
 		
 		size_t handleSize = vkut::raytracing::physicalDeviceRaytracingProperties.shaderGroupHandleSize;
+		size_t bindingTableSize = handleSize * 3U;
 		size_t rayGenOffset = 0U * handleSize;
 		size_t missOffset = 1U * handleSize;
-		size_t hitGroupOffset = 2U * handleSize; 
+		size_t hitGroupOffset = 2U * handleSize;
 		
 		VkStridedBufferRegionKHR raygenBufferRegion
 		{
 			.buffer = shaderBindingTable.buffer,
 			.offset = rayGenOffset,
 			.stride = handleSize,
-			.size = handleSize
+			.size = bindingTableSize
 		};
 
 		VkStridedBufferRegionKHR missBufferRegion
@@ -134,7 +135,7 @@ void Raytracer::recordCommandBuffers()
 			.buffer = shaderBindingTable.buffer,
 			.offset = missOffset,
 			.stride = handleSize,
-			.size = handleSize
+			.size = bindingTableSize
 		};
 
 		VkStridedBufferRegionKHR hitGroupBufferRegion
@@ -142,7 +143,7 @@ void Raytracer::recordCommandBuffers()
 			.buffer = shaderBindingTable.buffer,
 			.offset = hitGroupOffset,
 			.stride = handleSize,
-			.size = handleSize
+			.size = bindingTableSize
 		};
 
 		VkStridedBufferRegionKHR callableBufferRegion
@@ -150,7 +151,7 @@ void Raytracer::recordCommandBuffers()
 			.buffer = shaderBindingTable.buffer,
 			.offset = 0,
 			.stride = 0,
-			.size = shaderBindingTable.size
+			.size = 0
 		};
 
 		vkut::raytracing::vkCmdTraceRaysKHR(
@@ -185,12 +186,15 @@ void Raytracer::createAccelerationStructures()
 
 	std::vector<VkAccelerationStructureInstanceKHR> instances =
 	{
-		{{{1.0f, 0.0f, 0.0, 0.0f, 0.0f, 1.0f, 0.0, 0.0f, 0.0f, 0.0f, 1.0, 0.0f},
-			  0,
-			  0xFF,
-			  0x0,
-			  VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
-			  blas.address}}
+		VkAccelerationStructureInstanceKHR
+		{
+			.transform = {1.0f, 0.0f, 0.0, 0.0f, 0.0f, 1.0f, 0.0, 0.0f, 0.0f, 0.0f, 1.0, 0.0f},
+			.instanceCustomIndex = 0,
+			.mask = 0xFF,
+			.instanceShaderBindingTableRecordOffset = 0x0,
+			.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
+			.accelerationStructureReference = blas.address
+		}
 	};
 
 	tlas = vkut::raytracing::createTLAS(commandPool, instances);
