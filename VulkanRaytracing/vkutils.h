@@ -7,6 +7,12 @@
 #include "Optional.h"
 #include <utility>
 
+#ifdef VKUT_USE_SETUP_RESOURCE_QUEUE
+
+#include "ResourceQueue.h"
+
+#endif
+
 #define VK_CHECK(vkOp) 				  														\
 {									  														\
 	VkResult res = vkOp; 		  															\
@@ -137,7 +143,13 @@ namespace vkut {
 	}
 	
 	namespace setup {
-	
+		
+#ifdef VKUT_USE_SETUP_RESOURCE_QUEUE
+
+		inline ResourceQueue resourceQueue;
+
+#endif
+
 		[[nodiscard]]
 		GLFWwindow *createWindow(const char *title, int width, int height);
 		void destroyWindow(GLFWwindow *window);

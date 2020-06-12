@@ -357,10 +357,10 @@ void Raytracer::drawFrame()
 		.pSignalSemaphores = &currentSemaphore,
 	};
 
-	VkFence *toReset = &vkut::inFlightFences[currentFrame];
-	VK_CHECK(vkResetFences(vkut::device, 1, toReset));
+	VkFence *fenceToReset = &vkut::inFlightFences[currentFrame];
+	VK_CHECK(vkResetFences(vkut::device, 1, fenceToReset));
 
-	VK_CHECK(vkQueueSubmit(vkut::graphicsQueue, 1, &submitInfo, *toReset));
+	VK_CHECK(vkQueueSubmit(vkut::graphicsQueue, 1, &submitInfo, *fenceToReset));
 
 	VkPresentInfoKHR presentInfo
 	{
@@ -403,6 +403,8 @@ void Raytracer::init()
 	glfwSetFramebufferSizeCallback(window, Raytracer::framebufferResizeCallback);
 
 	vkut::setup::createInstance(title);
+
+
 	vkut::setup::createDebugMessenger();
 	vkut::setup::createSurface(window);
 
@@ -494,14 +496,5 @@ void Raytracer::cleanup()
 	vkut::raytracing::destroyTopLevelAccelerationStructure(tlas);
 	vkut::raytracing::destroyBottomLevelAccelerationStructure(blas);
 
-	vkut::setup::destroySyncObjects();
-
-	vkut::setup::destroyCommandPool(commandPool);
-	vkut::setup::destroySwapchainImageViews();
-	vkut::setup::destroySwapChain();
-	vkut::setup::destroyLogicalDevice();
-	vkut::setup::destroySurface();
-	vkut::setup::destroyDebugMessenger();
-	vkut::setup::destroyInstance();
-	vkut::setup::destroyWindow(window);
+	vkut::setup::resourceQueue.popAll();
 }

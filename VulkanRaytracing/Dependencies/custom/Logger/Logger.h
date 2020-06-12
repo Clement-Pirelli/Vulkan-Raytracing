@@ -7,10 +7,10 @@ public:
 
 	enum Verbosity : unsigned char
 	{
-		ERROR= 1,
-		WARNING = 2,
-		MESSAGE = 3,
-		TRIVIAL = 4
+		ERROR,
+		WARNING,
+		MESSAGE,
+		TRIVIAL
 	};
 
 	static void setVerbosity(Verbosity verbosity);
@@ -30,6 +30,7 @@ public:
 private:
 
 	static Verbosity verbosity;
+
 
 	Logger() = default;
 };

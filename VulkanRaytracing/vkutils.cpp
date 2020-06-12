@@ -6,6 +6,14 @@
 #include <set>
 #include "Files.h"
 
+
+#ifdef VKUT_USE_SETUP_RESOURCE_QUEUE
+#define SETUP_RESOURCE_QUEUE_PUSH(expr) { resourceQueue.push([=](){ expr; }); }
+#else
+#define SETUP_RESOURCE_QUEUE_PUSH(expr)
+#endif
+
+
 #pragma warning(disable : 4100)
 #pragma warning(disable : 4702)
 
@@ -963,6 +971,12 @@ namespace vkut {
 	}
 
 	namespace setup {
+
+#ifdef VKUT_USE_SETUP_RESOURCE_QUEUE
+#define SETUP_RESOURCE_QUEUE_PUSH(expr) { resourceQueue.push([=](){ expr; }); }
+#else
+#define SETUP_RESOURCE_QUEUE_PUSH(expr)
+#endif
 	
 		void createSyncObjects(size_t maxFramesInFlight)
 		{
@@ -983,6 +997,8 @@ namespace vkut {
 			};
 
 			Logger::logMessage("Created sync objects!");
+
+			SETUP_RESOURCE_QUEUE_PUSH(destroySyncObjects());
 		}
 
 		void destroySyncObjects()
@@ -1018,6 +1034,9 @@ namespace vkut {
 			};
 			VK_CHECK(vkCreateFramebuffer(vkut::device, &framebufferInfo, nullptr, &framebuffer));
 			Logger::logMessageFormatted("Created framebuffer %u with renderpass %u! ", framebuffer, renderPass);
+			
+			SETUP_RESOURCE_QUEUE_PUSH(destroyFramebuffer());
+			
 			return framebuffer;
 		}
 
@@ -1043,6 +1062,8 @@ namespace vkut {
 
 			Logger::logMessageFormatted("Created graphics command pool %u! ", commandPool);
 
+			SETUP_RESOURCE_QUEUE_PUSH(destroyCommandPool(commandPool));
+
 			return commandPool;
 		}
 
@@ -1060,6 +1081,8 @@ namespace vkut {
 				swapChainImageViews[i] = common::createImageView(swapChainImages[i], swapChainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
 			}
 			Logger::logMessage("Created swapchain image views!");
+
+			SETUP_RESOURCE_QUEUE_PUSH(destroySwapchainImageViews());
 		}
 
 		void destroySwapchainImageViews()
@@ -1128,6 +1151,8 @@ namespace vkut {
 
 			vkut::swapChainImageFormat = surfaceFormat.format;
 			vkut::swapChainExtent = extent;
+
+			SETUP_RESOURCE_QUEUE_PUSH(destroySwapChain());
 		}
 
 		void destroySwapChain()
@@ -1177,12 +1202,6 @@ namespace vkut {
 				.pNext = &addressFeatures,
 				.features = deviceFeatures,
 			};
-
-			//While creating the device, also don't set VkDeviceCreateInfo::pEnabledFeatures. 
-			//Fill in VkPhysicalDeviceFeatures2 structure instead and pass it as VkDeviceCreateInfo::pNext. 
-			
-			//Enable this device feature - attach additional structure VkPhysicalDeviceBufferDeviceAddressFeatures* 
-			//to VkPhysicalDeviceFeatures2::pNext and set its member bufferDeviceAddress to VK_TRUE.
 			
 			VkDeviceCreateInfo createInfo
 			{
@@ -1209,6 +1228,8 @@ namespace vkut {
 
 			vkGetDeviceQueue(vkut::device, indices.graphicsFamily.getValue(), 0, &vkut::graphicsQueue);
 			vkGetDeviceQueue(vkut::device, indices.presentFamily.getValue(), 0, &vkut::presentQueue);
+			
+			SETUP_RESOURCE_QUEUE_PUSH(destroyLogicalDevice());
 		}
 
 		void destroyLogicalDevice()
@@ -1246,6 +1267,8 @@ namespace vkut {
 		{
 			VK_CHECK(glfwCreateWindowSurface(vkut::instance, window, nullptr, &vkut::surface));
 			Logger::logMessage("Created surface!");
+
+			SETUP_RESOURCE_QUEUE_PUSH(destroySurface());
 		}
 
 		void destroySurface()
@@ -1264,6 +1287,8 @@ namespace vkut {
 			assert(CreateDebugUtilsMessengerEXT(vkut::instance, &createInfo, nullptr, &debugMessenger) == VK_SUCCESS);
 
 			Logger::logMessage("Created debug messenger!");
+
+			SETUP_RESOURCE_QUEUE_PUSH(destroyDebugMessenger());
 		}
 
 		void destroyDebugMessenger() {
@@ -1318,6 +1343,8 @@ namespace vkut {
 
 			VK_CHECK(vkCreateInstance(&createInfo, nullptr, &vkut::instance));
 			Logger::logMessage("Created instance!");
+
+			SETUP_RESOURCE_QUEUE_PUSH(destroyInstance());
 		}
 
 		void destroyInstance()
@@ -1333,6 +1360,9 @@ namespace vkut {
 			GLFWwindow *window = glfwCreateWindow(width, height, title, NULL, NULL);
 			assert(window != NULL);
 			Logger::logMessage("Created window!");
+
+			SETUP_RESOURCE_QUEUE_PUSH(destroyWindow(window));
+
 			return window;
 		}
 
@@ -1342,6 +1372,8 @@ namespace vkut {
 			glfwTerminate();
 			Logger::logMessage("Destroyed window!");
 		}
+
+#undef SETUP_RESOURCE_QUEUE_PUSH
 	}
 
 	namespace raytracing {

@@ -201,12 +201,14 @@ for %%i in (*.vert *.frag *.comp, *.rchit *.rmiss *.rgen *rahit) do "glslangVali
     <ClCompile Include="Dependencies\custom\Logger\Logger.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Raytracer.cpp" />
+    <ClCompile Include="ResourceQueue.cpp" />
     <ClCompile Include="vkutils.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Dependencies\custom\Logger\Logger.h" />
     <ClInclude Include="Files.h" />
     <ClInclude Include="Raytracer.h" />
+    <ClInclude Include="ResourceQueue.h" />
     <ClInclude Include="vkutils.h" />
   </ItemGroup>
   <ItemGroup>

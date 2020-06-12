@@ -2,8 +2,8 @@
 #include "glfw3.h"
 #define VK_ENABLE_BETA_EXTENSIONS
 #include "vulkan.h"
+#define VKUT_USE_SETUP_RESOURCE_QUEUE
 #include "vkutils.h"
-
 
 class Raytracer
 {
